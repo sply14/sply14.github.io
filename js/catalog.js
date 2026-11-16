@@ -1,4 +1,4 @@
-import { h, fetchItems, formatPrice, safeUrl, MOBILE_COLS } from './common.js';
+import { h, fetchItems, formatPrice, safeUrl, look, MOBILE_COLS } from './common.js';
 
 const grid = document.getElementById('grid');
 const detail = document.getElementById('detail');
@@ -22,10 +22,14 @@ function renderGrid() {
       const mw = Math.min(it.w, MOBILE_COLS);
       const mh = Math.max(1, Math.round((it.h * mw) / it.w));
       const pos = `--x:${it.x + 1};--y:${it.y + 1};--w:${it.w};--h:${it.h};--mw:${mw};--mh:${mh};--d:${Math.min(it.x + it.y, 24)};--fit:${Number(it.scale) || 1}`;
-      if (it.kind === 'text') return h('div', { class: 'label', style: pos, text: it.label || '' });
+      if (it.kind === 'text') {
+        const label = h('div', { class: 'label', style: pos }, h('span', { class: 't', text: it.label || '' }));
+        look(label, it);
+        return label;
+      }
       const i = items.indexOf(it);
       const price = formatPrice(it);
-      return h(
+      const el = h(
         'button',
         {
           class: 'item',
@@ -38,6 +42,8 @@ function renderGrid() {
         h('img', { src: it.thumb_url || it.image_url, alt: '', loading: i < 40 ? 'eager' : 'lazy', decoding: 'async' }),
         price && h('span', { class: 'price', text: price }),
       );
+      look(el, it);
+      return el;
     }),
   );
 }

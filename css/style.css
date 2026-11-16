@@ -45,6 +45,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   min-width: 0;
   min-height: 0;
   display: block;
+  overflow: hidden;
   outline: none;
   touch-action: manipulation;
   animation: arrive .7s var(--ease) both;
@@ -63,7 +64,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   object-fit: contain;
   user-select: none;
   -webkit-user-drag: none;
-  transform: translate(calc(var(--px, 0) * 3%), calc(var(--py, 0) * 3%)) scale(calc(var(--s, 1) * var(--fit, 1)));
+  transform: translate(calc(var(--px, 0) * 3% + var(--ox, 0%)), calc(var(--py, 0) * 3% + var(--oy, 0%))) scale(calc(var(--s, 1) * var(--fit, 1)));
   transition: opacity .3s ease, transform .5s var(--ease);
 }
 
@@ -98,12 +99,24 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   min-width: 0;
   padding: 0 calc(100cqw / var(--cols) * .1);
   font-size: calc(100cqw / var(--cols) * .36 * var(--fit, 1));
-  font-weight: 700;
-  letter-spacing: -0.045em;
+  font-weight: var(--fw, 700);
+  font-style: var(--fi, normal);
+  letter-spacing: var(--ls, -0.045em);
   line-height: .92;
   white-space: pre-line;
   overflow-wrap: anywhere;
 }
+/* 글자 세로 늘이기·기울이기 */
+.label .t, .tile .txt .t {
+  display: block;
+  min-width: 0;
+  transform: scaleY(var(--sy, 1)) skewX(calc(var(--sk, 0) * -1deg));
+  transform-origin: 0 50%;
+}
+[data-font="condensed"] { font-family: "Barlow Condensed", var(--font); --ls: -0.01em; }
+[data-font="didone"] { font-family: "Bodoni Moda", "Noto Serif KR", serif; --ls: -0.03em; }
+[data-font="serif"] { font-family: "Instrument Serif", "Noto Serif KR", serif; --ls: -0.02em; }
+[data-font="mono"] { font-family: "IBM Plex Mono", ui-monospace, monospace; --ls: -0.06em; }
 .label {
   animation: arrive .7s var(--ease) both;
   animation-delay: calc(var(--d) * 28ms);

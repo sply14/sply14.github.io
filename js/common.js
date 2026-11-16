@@ -59,3 +59,28 @@ export async function fetchItems() {
   if (!res.ok) throw new Error(`catalog fetch failed: ${res.status}`);
   return res.json();
 }
+
+// 텍스트 블록에서 고를 수 있는 폰트
+export const FONTS = {
+  grotesk: 'Grotesk — Helvetica',
+  condensed: 'Condensed — Barlow',
+  didone: 'Didone — Bodoni',
+  serif: 'Serif — Instrument',
+  mono: 'Mono — IBM Plex',
+};
+
+// 상품 사진의 확대·위치, 텍스트의 폰트·굵기·기울임 등을 요소에 적용 (카탈로그와 관리자 화면 공용)
+export function look(el, it) {
+  const st = it.style || {};
+  el.style.setProperty('--fit', Number(it.scale) || 1);
+  if (it.kind === 'text') {
+    el.dataset.font = FONTS[st.font] ? st.font : 'grotesk';
+    el.style.setProperty('--fw', st.bold === false ? 400 : 700);
+    el.style.setProperty('--fi', st.italic ? 'italic' : 'normal');
+    el.style.setProperty('--sy', Number(st.sy) || 1);
+    el.style.setProperty('--sk', Number(st.skew) || 0);
+  } else {
+    el.style.setProperty('--ox', `${(Number(st.ox) || 0) * 100}%`);
+    el.style.setProperty('--oy', `${(Number(st.oy) || 0) * 100}%`);
+  }
+}

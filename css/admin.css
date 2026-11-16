@@ -104,8 +104,9 @@
   height: 80%;
   object-fit: contain;
   pointer-events: none;
-  transform: scale(var(--fit, 1));
+  transform: translate(var(--ox, 0%), var(--oy, 0%)) scale(var(--fit, 1));
 }
+.tile { overflow: hidden; }
 .tile .txt { position: absolute; inset: 0; pointer-events: none; }
 .tile:hover, .tile.selected, .tile.active { box-shadow: inset 0 0 0 1px var(--ink); }
 .tile.selected { box-shadow: inset 0 0 0 2px var(--ink); }
@@ -214,7 +215,30 @@
 .field .check input { width: 16px; height: 16px; accent-color: var(--ink); margin: 0; }
 
 .p-image { border: 1px solid var(--ink); }
-.p-image img { display: block; width: 100%; height: 180px; object-fit: contain; padding: 14px; }
+/* 사진 위치·확대 편집 틀: 그리드 칸과 같은 비율, 보이는 그대로 칸에 들어감 */
+.crop {
+  position: relative;
+  width: 100%;
+  margin: 0 auto;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  background-image:
+    linear-gradient(to right, #eee 1px, transparent 1px),
+    linear-gradient(to bottom, #eee 1px, transparent 1px);
+  background-size: 33.33% 33.33%;
+}
+.crop:active { cursor: grabbing; }
+.crop img {
+  position: absolute;
+  inset: 10%;
+  width: 80%;
+  height: 80%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  transform: translate(var(--ox, 0%), var(--oy, 0%)) scale(var(--fit, 1));
+}
 .p-image-actions { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--ink); }
 .p-image button {
   padding: 10px 4px;
@@ -222,6 +246,34 @@
   font-weight: 700;
 }
 .p-image button + button { border-left: 1px solid var(--ink); }
+.admin select {
+  font: inherit;
+  font-size: 14px;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--ink);
+  border-radius: 0;
+  background: none;
+  padding: 6px 0 7px;
+  outline: none;
+}
+.toggles { display: flex; gap: 6px; padding-bottom: 2px; }
+.toggle { cursor: pointer; }
+.toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+.toggle span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--ink);
+  font-size: 15px !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+.toggle.b span { font-weight: 700; }
+.toggle.i span { font-style: italic; font-family: Georgia, serif; font-weight: 400 !important; }
+.toggle input:checked + span { background: var(--ink); color: var(--paper); }
+.toggle input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
 .range { display: flex; align-items: center; gap: 12px; padding-top: 6px; }
 .admin .range input { padding: 0; border: 0; box-shadow: none; accent-color: var(--ink); }
 .range output { width: 40px; text-align: right; font-size: 12px; font-weight: 400; letter-spacing: 0; font-variant-numeric: tabular-nums; }

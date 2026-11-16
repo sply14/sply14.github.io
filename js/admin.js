@@ -1,4 +1,4 @@
-import { h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js';
+import { look, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js';
 
 const $ = (s) => document.querySelector(s);
 const grid = $('#grid');
@@ -76,7 +76,7 @@ async function localApi() {
     async isAdmin() { return true; },
     async list() { return structuredClone(data); },
     async insert(row) {
-      const full = { id: crypto.randomUUID(), kind: 'product', label: '', scale: 1, name: '', code: '', price: null, sold: false, size: '', material: '', description: '', buy_url: '', detail_urls: [], ...row };
+      const full = { id: crypto.randomUUID(), kind: 'product', label: '', scale: 1, style: {}, name: '', code: '', price: null, sold: false, size: '', material: '', description: '', buy_url: '', detail_urls: [], ...row };
       data.push(full);
       save();
       return structuredClone(full);
@@ -238,13 +238,13 @@ function render() {
         'div',
         { class: 'tile' + (selected?.id === it.id ? ' selected' : ''), 'data-id': it.id, tabindex: '0' },
         it.kind === 'text'
-          ? h('span', { class: 'txt', text: it.label || '' })
+          ? h('span', { class: 'txt' }, h('span', { class: 't', text: it.label || '' }))
           : h('img', { src: it.thumb_url || it.image_url, alt: it.name || '', draggable: 'false' }),
         h('span', { class: 'badge', text: `${it.w}×${it.h}` }),
         ['nw', 'ne', 'sw', 'se'].map((d) => h('span', { class: `handle ${d}`, 'data-dir': d })),
       );
       place(el, it);
-      el.style.setProperty('--fit', Number(it.scale) || 1);
+      look(el, it);
       return el;
     }),
   );
@@ -280,6 +280,9 @@ grid.addEventListener('pointermove', (e) => {
   if (!drag.moved) {
     if (Math.hypot(dx, dy) < 5) return;
     drag.moved = true;
+    // 끄는 동안 타일이 쪼그라들지 않도록 현재 크기를 고정
+    el.style.width = `${it.w * cellSize()}px`;
+    el.style.height = `${it.h * cellSize()}px`;
     el.classList.add('active');
     drag.ghost = h('div', { class: 'ghost' });
     grid.append(drag.ghost);
@@ -358,97 +361,18 @@ grid.addEventListener('pointercancel', (e) => endDrag(e, true));
 
 /* ───────── 이미지 추가 ───────── */
 
-// 사진 둘레의 빈 여백(투명 또는 단색 배경)을 찾아 상품만 남는 영역을 계산
-function contentBox(ctx, w, hh) {
-  const { data } = ctx.getImageData(0, 0, w, hh);
-  const px = (x, y) => (y * w + x) * 4;
-  const corners = [px(0, 0), px(w - 1, 0), px(0, hh - 1), px(w - 1, hh - 1)];
-  const transparent = corners.every((i) => data[i + 3] < 16);
-  const bg = corners[0];
-  if (!transparent) {
-    // 불투명 사진: 네 모서리 색이 거의 같을 때만 그 색을 배경으로 봄
-    const same = corners.every((i) => data[i + 3] > 240 && [0, 1, 2].every((c) => Math.abs(data[i + c] - data[bg + c]) < 14));
-    if (!same) return null;
-  }
-  const isContent = (i) =>
-    transparent
-      ? data[i + 3] > 12
-      : Math.abs(data[i] - data[bg]) + Math.abs(data[i + 1] - data[bg + 1]) + Math.abs(data[i + 2] - data[bg + 2]) > 36;
-  let x0 = w, y0 = hh, x1 = -1, y1 = -1;
-  for (let y = 0; y < hh; y++) {
-    for (let x = 0; x < w; x++) {
-      if (!isContent(px(x, y))) continue;
-      if (x < x0) x0 = x;
-      if (x > x1) x1 = x;
-      if (y < y0) y0 = y;
-      if (y > y1) y1 = y;
-    }
-  }
-  if (x1 < 0) return null;
-  const m = Math.round(Math.max(x1 - x0, y1 - y0) * 0.01);
-  x0 = Math.max(0, x0 - m);
-  y0 = Math.max(0, y0 - m);
-  x1 = Math.min(w - 1, x1 + m);
-  y1 = Math.min(hh - 1, y1 + m);
-  return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
-}
-
-async function prepare(file, trim = true) {
+// 올리기 전에 브라우저에서 크기를 줄여 원본(최대 2000px)과 그리드용(최대 800px) 두 장을 만듦
+async function prepare(file) {
   const bmp = await createImageBitmap(file);
-  let box = { x: 0, y: 0, w: bmp.width, h: bmp.height };
-  let trimmed = false;
-  if (trim) {
-    // 분석은 최대 1200px로 줄여서 하고, 결과 영역을 원본 좌표로 환산
-    const k = Math.min(1, 1200 / Math.max(bmp.width, bmp.height));
-    const c = document.createElement('canvas');
-    c.width = Math.max(1, Math.round(bmp.width * k));
-    c.height = Math.max(1, Math.round(bmp.height * k));
-    const ctx = c.getContext('2d', { willReadFrequently: true });
-    ctx.drawImage(bmp, 0, 0, c.width, c.height);
-    const b = contentBox(ctx, c.width, c.height);
-    if (b && (b.w < c.width * 0.97 || b.h < c.height * 0.97)) {
-      box = {
-        x: Math.floor(b.x / k),
-        y: Math.floor(b.y / k),
-        w: Math.min(bmp.width - Math.floor(b.x / k), Math.ceil(b.w / k)),
-        h: Math.min(bmp.height - Math.floor(b.y / k), Math.ceil(b.h / k)),
-      };
-      trimmed = true;
-    }
-  }
   const make = (max) => {
-    const sc = Math.min(1, max / Math.max(box.w, box.h));
+    const sc = Math.min(1, max / Math.max(bmp.width, bmp.height));
     const c = document.createElement('canvas');
-    c.width = Math.max(1, Math.round(box.w * sc));
-    c.height = Math.max(1, Math.round(box.h * sc));
-    c.getContext('2d').drawImage(bmp, box.x, box.y, box.w, box.h, 0, 0, c.width, c.height);
+    c.width = Math.max(1, Math.round(bmp.width * sc));
+    c.height = Math.max(1, Math.round(bmp.height * sc));
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
     return new Promise((res) => c.toBlob(res, 'image/webp', 0.9));
   };
-  return { full: await make(2000), thumb: await make(800), aspect: box.w / box.h, trimmed };
-}
-
-// 이미 올린 대표 사진의 여백을 잘라 다시 저장
-async function trimSelected() {
-  const it = selected;
-  if (!it || it.kind === 'text') return;
-  let changed = false;
-  await run('여백 분석 중…', async () => {
-    const blob = await (await fetch(it.image_url)).blob();
-    const { full, thumb, trimmed } = await prepare(blob, true);
-    if (!trimmed) return;
-    const old = [it.image_url, it.thumb_url];
-    const [image_url, thumb_url] = await Promise.all([api.upload(full), api.upload(thumb)]);
-    await api.update(it.id, { image_url, thumb_url });
-    Object.assign(it, { image_url, thumb_url });
-    api.removeFiles(old);
-    changed = true;
-  });
-  if (changed) {
-    render();
-    fillPanel();
-  } else {
-    status('잘라낼 여백이 없습니다 — 아래 사진 크기 슬라이더로 키워 보세요');
-  }
+  return { full: await make(2000), thumb: await make(800) };
 }
 
 async function addFiles(files, cell) {
@@ -457,11 +381,11 @@ async function addFiles(files, cell) {
   for (const [n, file] of list.entries()) {
     try {
       last = await run(`업로드 중… ${n + 1}/${list.length}`, async () => {
-        const { full, thumb, aspect } = await prepare(file);
-        // 사진 비율로 기본 칸 수 추천: 가로로 긴 제품은 2×1, 세로로 긴 제품은 1×2
-        const w = aspect > 1.6 ? 2 : 1;
-        const hh = aspect < 0.62 ? 2 : 1;
-        const pos = nearestFree(cell && { x: Math.min(cell.x, COLS - w), y: cell.y }, w, hh);
+        const { full, thumb } = await prepare(file);
+        // 항상 표시된 한 칸에 들어감 (크기는 올린 뒤 모서리를 끌어 조절)
+        const w = 1;
+        const hh = 1;
+        const pos = nearestFree(cell, w, hh);
         cell = null;
         const [image_url, thumb_url] = await Promise.all([api.upload(full), api.upload(thumb)]);
         const row = await api.insert({ image_url, thumb_url, ...pos, w, h: hh });
@@ -588,7 +512,18 @@ function fillPanel() {
   $('#p-size').textContent = `${isText ? '텍스트 · ' : ''}${it.w} × ${it.h} 칸`;
   $('#f-text').hidden = !isText;
   $('#f-product').hidden = isText;
-  $('#scale-label').textContent = isText ? '글자 크기' : '칸 안에서 사진 크기';
+  $('#scale-label').textContent = isText ? '글자 크기' : '사진 확대';
+  const st = it.style || {};
+  form.elements.st_font.value = FONTS[st.font] ? st.font : 'grotesk';
+  form.elements.st_bold.checked = st.bold !== false;
+  form.elements.st_italic.checked = !!st.italic;
+  form.elements.st_sy.value = Number(st.sy) || 1;
+  form.elements.st_skew.value = Number(st.skew) || 0;
+  syncOutputs();
+  const crop = $('#p-crop');
+  crop.style.aspectRatio = `${it.w} / ${it.h}`;
+  crop.style.width = it.h > it.w ? `${Math.round((100 * it.w) / it.h)}%` : '100%';
+  look(crop, it);
   $('#p-delete').textContent = isText ? '텍스트 삭제' : '상품 삭제';
   form.elements.scale.value = Number(it.scale) || 1;
   $('#scale-out').textContent = `${Math.round((Number(it.scale) || 1) * 100)}%`;
@@ -635,6 +570,13 @@ form.addEventListener('change', async (e) => {
     return;
   }
 
+  if (el.name.startsWith('st_')) {
+    const style = { ...(it.style || {}), ...readTextStyle() };
+    await run('저장 중…', () => api.update(it.id, { style }));
+    it.style = style;
+    return;
+  }
+
   let value;
   if (el.name === 'scale') value = Number(el.value) || 1;
   else if (el.name === 'label') value = el.value;
@@ -645,19 +587,111 @@ form.addEventListener('change', async (e) => {
   it[el.name] = value;
 });
 
-// 글자·크기는 입력하는 동안 그리드에 바로 미리보기
+form.elements.st_font.append(...Object.entries(FONTS).map(([value, text]) => h('option', { value, text })));
+
+const readTextStyle = () => ({
+  font: form.elements.st_font.value,
+  bold: form.elements.st_bold.checked,
+  italic: form.elements.st_italic.checked,
+  sy: Number(form.elements.st_sy.value) || 1,
+  skew: Number(form.elements.st_skew.value) || 0,
+});
+
+function syncOutputs() {
+  $('#scale-out').textContent = `${Math.round(form.elements.scale.value * 100)}%`;
+  form.querySelector('[data-for="st_sy"]').textContent = `${Math.round(form.elements.st_sy.value * 100)}%`;
+  form.querySelector('[data-for="st_skew"]').textContent = `${form.elements.st_skew.value}°`;
+}
+
+const tileOf = (it) => it && grid.querySelector(`[data-id="${it.id}"]`);
+
+// 입력하는 동안 그리드에 바로 미리보기
 form.addEventListener('input', (e) => {
   const it = selected;
-  const tile = it && grid.querySelector(`[data-id="${it.id}"]`);
+  const tile = tileOf(it);
   if (!tile) return;
-  if (e.target.name === 'scale') {
+  const name = e.target.name;
+  if (name === 'scale') {
     tile.style.setProperty('--fit', e.target.value);
-    $('#scale-out').textContent = `${Math.round(e.target.value * 100)}%`;
-  } else if (e.target.name === 'label') {
-    tile.querySelector('.txt').textContent = e.target.value;
+    $('#p-crop').style.setProperty('--fit', e.target.value);
+  } else if (name === 'label') {
+    tile.querySelector('.t').textContent = e.target.value;
+  } else if (name.startsWith('st_')) {
+    look(tile, { ...it, scale: form.elements.scale.value, style: { ...(it.style || {}), ...readTextStyle() } });
   }
+  syncOutputs();
 });
-$('#p-trim').addEventListener('click', () => trimSelected().catch(() => {}));
+
+/* 사진 위치·확대 편집: 틀 안에서 끌면 이동, 휠이나 슬라이더로 확대 (인스타그램 사진 맞추기처럼) */
+{
+  const crop = $('#p-crop');
+  let pan = null;
+  let wheelTimer;
+
+  const show = (it, scale, ox, oy) => {
+    const tmp = { kind: 'product', scale, style: { ox, oy } };
+    look(crop, tmp);
+    const tile = tileOf(it);
+    if (tile) look(tile, tmp);
+    form.elements.scale.value = scale;
+    syncOutputs();
+  };
+  const save = (it, scale, ox, oy) => {
+    const style = { ...(it.style || {}), ox, oy };
+    it.scale = scale;
+    it.style = style;
+    return run('저장 중…', () => api.update(it.id, { scale, style })).catch(() => {});
+  };
+  const current = (it) => ({
+    scale: Number(form.elements.scale.value) || 1,
+    ox: Number(it.style?.ox) || 0,
+    oy: Number(it.style?.oy) || 0,
+  });
+
+  crop.addEventListener('pointerdown', (e) => {
+    const it = selected;
+    if (!it || it.kind === 'text') return;
+    e.preventDefault();
+    crop.setPointerCapture(e.pointerId);
+    pan = { it, sx: e.clientX, sy: e.clientY, ...current(it) };
+    pan.nx = pan.ox;
+    pan.ny = pan.oy;
+  });
+  crop.addEventListener('pointermove', (e) => {
+    if (!pan) return;
+    // 이동량은 사진 상자(틀의 80%) 대비 비율로 저장 → 어떤 화면 크기에서도 같은 위치
+    const clamp = (v) => Math.max(-3, Math.min(3, v));
+    pan.nx = clamp(pan.ox + (e.clientX - pan.sx) / (crop.clientWidth * 0.8));
+    pan.ny = clamp(pan.oy + (e.clientY - pan.sy) / (crop.clientHeight * 0.8));
+    show(pan.it, pan.scale, pan.nx, pan.ny);
+  });
+  const end = () => {
+    if (!pan) return;
+    const { it, scale, nx, ny, ox, oy } = pan;
+    pan = null;
+    if (nx !== ox || ny !== oy) save(it, scale, nx, ny);
+  };
+  crop.addEventListener('pointerup', end);
+  crop.addEventListener('pointercancel', end);
+
+  crop.addEventListener('wheel', (e) => {
+    const it = selected;
+    if (!it || it.kind === 'text') return;
+    e.preventDefault();
+    const c = current(it);
+    const scale = Math.max(0.5, Math.min(4, c.scale * Math.exp(-e.deltaY * 0.0015)));
+    show(it, scale, c.ox, c.oy);
+    clearTimeout(wheelTimer);
+    wheelTimer = setTimeout(() => save(it, scale, c.ox, c.oy), 350);
+  }, { passive: false });
+
+  $('#p-reset').addEventListener('click', () => {
+    const it = selected;
+    if (!it) return;
+    show(it, 1, 0, 0);
+    save(it, 1, 0, 0);
+  });
+}
 
 $('#p-replace').addEventListener('click', () => pick({ kind: 'main' }, false));
 $('#p-close').addEventListener('click', () => select(null));

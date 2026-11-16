@@ -19,6 +19,7 @@ create table public.catalog_items (
   kind text not null default 'product' check (kind in ('product','text')),  -- 상품 또는 텍스트 블록
   label text not null default '',                                            -- 텍스트 블록 내용
   scale real not null default 1 check (scale > 0 and scale <= 4),            -- 칸 안에서 사진/글자 크기
+  style jsonb not null default '{}'::jsonb,  -- 상품: 사진 위치(ox, oy) / 텍스트: 폰트, 굵기, 이탤릭, 세로 늘이기, 기울기
   x int not null default 0,
   y int not null default 0,
   w int not null default 1,

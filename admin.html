@@ -6,6 +6,9 @@
   <meta name="robots" content="noindex">
   <link rel="icon" href="data:,">
   <title>Catalog — Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,400;0,700;1,400;1,700&family=Bodoni+Moda:ital,wght@0,400;0,700;1,400;1,700&family=IBM+Plex+Mono:ital,wght@0,400;0,700;1,400;1,700&family=Instrument+Serif:ital@0;1&display=swap">
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/admin.css">
 </head>
@@ -45,13 +48,26 @@
       <form id="form" autocomplete="off">
         <div id="f-text" class="group">
           <label class="field"><span>텍스트</span><textarea name="label" rows="3" placeholder="chairs, stools and small armchairs"></textarea></label>
+          <div class="field two">
+            <label><span>폰트</span><select name="st_font"></select></label>
+            <div class="toggles">
+              <label class="toggle b" title="굵게"><input name="st_bold" type="checkbox"><span>B</span></label>
+              <label class="toggle i" title="이탤릭"><input name="st_italic" type="checkbox"><span>I</span></label>
+            </div>
+          </div>
+          <label class="field"><span>세로로 늘이기 / 누르기</span>
+            <span class="range"><input name="st_sy" type="range" min="0.4" max="3" step="0.05"><output data-for="st_sy"></output></span>
+          </label>
+          <label class="field"><span>기울이기</span>
+            <span class="range"><input name="st_skew" type="range" min="-30" max="30" step="1"><output data-for="st_skew"></output></span>
+          </label>
         </div>
         <div id="f-product" class="group">
         <div class="p-image">
-          <img id="p-img" alt="">
+          <div id="p-crop" class="crop" title="끌어서 위치 이동 · 휠로 확대/축소"><img id="p-img" alt="" draggable="false"></div>
           <div class="p-image-actions">
             <button id="p-replace" type="button">사진 교체</button>
-            <button id="p-trim" type="button" title="사진 둘레의 빈 여백을 잘라내 상품이 칸을 꽉 채우게 합니다">여백 자동 제거</button>
+            <button id="p-reset" type="button">위치·크기 초기화</button>
           </div>
         </div>
         <div class="field">
@@ -69,8 +85,8 @@
         <label class="field"><span>설명</span><textarea name="description" rows="4"></textarea></label>
         <label class="field"><span>구매 링크</span><input name="buy_url" placeholder="https://… 또는 mailto:…"></label>
         </div>
-        <label class="field"><span id="scale-label">칸 안에서 사진 크기</span>
-          <span class="range"><input name="scale" type="range" min="0.5" max="1.6" step="0.05"><output id="scale-out"></output></span>
+        <label class="field"><span id="scale-label">사진 확대</span>
+          <span class="range"><input name="scale" type="range" min="0.5" max="4" step="0.01"><output id="scale-out"></output></span>
         </label>
         <div class="field two">
           <label><span>가로 칸</span><input name="w" type="number" min="1" max="10" step="1"></label>
