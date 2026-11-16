@@ -88,7 +88,8 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 
 @media (hover: hover) and (pointer: fine) {
   .grid:has(.item:hover) .item:not(:hover) img { opacity: .18; }
-  .item:hover { --s: 1.07; z-index: 2; }
+  /* 올려놓은 상품은 칸 밖으로 넘쳐도 옆 칸 위에 보이게 */
+  .item:hover { --s: 1.07; z-index: 2; overflow: visible; }
   .item:hover:active { --s: 1; }
 }
 

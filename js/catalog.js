@@ -1,4 +1,4 @@
-import { h, fetchItems, formatPrice, safeUrl, look, MOBILE_COLS } from './common.js?v=1794840040';
+import { h, fetchItems, formatPrice, safeUrl, look, MOBILE_COLS } from './common.js?v=1794841063';
 
 const grid = document.getElementById('grid');
 const detail = document.getElementById('detail');

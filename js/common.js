@@ -45,7 +45,7 @@ export function safeUrl(u) {
 export async function loadLocal() {
   const raw = localStorage.getItem(LOCAL_KEY);
   if (raw) return JSON.parse(raw);
-  const { demoItems } = await import('./demo.js?v=1794840040');
+  const { demoItems } = await import('./demo.js?v=1794841063');
   const seed = demoItems();
   localStorage.setItem(LOCAL_KEY, JSON.stringify(seed));
   return seed;
