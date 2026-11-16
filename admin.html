@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="data:,">
+  <title>Catalog — Admin</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+<body class="admin">
+
+  <!-- 로그인 -->
+  <form id="login" class="login" hidden>
+    <h1>Admin</h1>
+    <label>Email<input name="email" type="email" autocomplete="username" required></label>
+    <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+    <button type="submit">Sign in →</button>
+    <p id="login-msg" class="msg" role="alert"></p>
+  </form>
+
+  <!-- 편집기 -->
+  <div id="editor" hidden>
+    <header class="bar">
+      <strong>Catalog — Admin</strong>
+      <span id="status" class="status" role="status"></span>
+      <span class="spacer"></span>
+      <button id="add" type="button">+ 상품 추가</button>
+      <a id="view" href="./" target="_blank" rel="noopener">사이트 보기 ↗</a>
+      <button id="logout" type="button">로그아웃</button>
+    </header>
+    <p class="hint">드래그 = 이동 · 오른쪽 아래 모서리 = 크기 · 클릭 = 정보 수정 · 이미지 파일을 그리드에 끌어다 놓거나 빈 칸을 더블클릭 = 추가</p>
+
+    <div class="wrap">
+      <main id="grid" class="grid edit"></main>
+    </div>
+
+    <aside id="panel" class="panel" hidden>
+      <div class="panel-head">
+        <strong id="p-size"></strong>
+        <button id="p-close" type="button" aria-label="닫기">닫기 ×</button>
+      </div>
+      <form id="form" autocomplete="off">
+        <div class="p-image">
+          <img id="p-img" alt="">
+          <button id="p-replace" type="button">대표 사진 교체</button>
+        </div>
+        <div class="field">
+          <span>상세 사진</span>
+          <div id="p-details" class="p-details"></div>
+        </div>
+        <label class="field"><span>이름</span><input name="name"></label>
+        <label class="field"><span>코드</span><input name="code" placeholder="예: FN-SG08"></label>
+        <div class="field two">
+          <label><span>가격 (원)</span><input name="price" type="number" min="0" step="1" inputmode="numeric"></label>
+          <label class="check"><input name="sold" type="checkbox"><span>판매 완료</span></label>
+        </div>
+        <label class="field"><span>크기</span><input name="size" placeholder="W 577 × D 465 × H 657 mm"></label>
+        <label class="field"><span>소재</span><input name="material"></label>
+        <label class="field"><span>설명</span><textarea name="description" rows="4"></textarea></label>
+        <label class="field"><span>구매 링크</span><input name="buy_url" placeholder="https://… 또는 mailto:…"></label>
+        <div class="field two">
+          <label><span>가로 칸</span><input name="w" type="number" min="1" max="10" step="1"></label>
+          <label><span>세로 칸</span><input name="h" type="number" min="1" step="1"></label>
+        </div>
+        <button id="p-delete" type="button" class="danger">상품 삭제</button>
+      </form>
+    </aside>
+  </div>
+
+  <input id="file" type="file" accept="image/png,image/jpeg,image/webp,image/avif" multiple hidden>
+  <script type="module" src="js/admin.js"></script>
+</body>
+</html>
