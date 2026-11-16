@@ -20,3 +20,9 @@ python3 -m http.server 4388
 ## 배포
 
 GitHub Pages에서 저장소 루트를 그대로 배포하면 됩니다 (Settings → Pages → Branch: main / root).
+
+코드를 고친 뒤에는 푸시 전에 아래 명령을 실행합니다. CSS/JS 주소 뒤의 버전 번호를 바꿔서, 방문자 브라우저가 옛 파일을 캐시에서 꺼내 쓰지 않게 합니다.
+
+```bash
+python3 tools/bump.py
+```
