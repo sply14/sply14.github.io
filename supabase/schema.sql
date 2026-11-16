@@ -42,3 +42,14 @@ create policy "catalog bucket admin select" on storage.objects for select to aut
 create policy "catalog bucket admin insert" on storage.objects for insert to authenticated with check (bucket_id = 'catalog' and (select public.is_admin()));
 create policy "catalog bucket admin update" on storage.objects for update to authenticated using (bucket_id = 'catalog' and (select public.is_admin())) with check (bucket_id = 'catalog' and (select public.is_admin()));
 create policy "catalog bucket admin delete" on storage.objects for delete to authenticated using (bucket_id = 'catalog' and (select public.is_admin()));
+
+-- 여러 상품의 위치·크기를 한 번에(전부 성공하거나 전부 실패) 바꾼다. RLS는 호출자 권한 그대로 적용된다.
+create function public.catalog_set_layout(changes jsonb)
+returns void language sql security invoker set search_path = '' as $$
+  update public.catalog_items c
+     set x = (e->>'x')::int, y = (e->>'y')::int, w = (e->>'w')::int, h = (e->>'h')::int, updated_at = now()
+    from jsonb_array_elements(changes) e
+   where c.id = (e->>'id')::uuid;
+$$;
+revoke execute on function public.catalog_set_layout(jsonb) from public, anon;
+grant execute on function public.catalog_set_layout(jsonb) to authenticated;

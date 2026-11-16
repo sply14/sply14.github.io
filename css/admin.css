@@ -118,7 +118,6 @@
   justify-self: start;
   align-self: start;
 }
-.tile.busy { opacity: .4; }
 
 .tile .badge {
   position: absolute;

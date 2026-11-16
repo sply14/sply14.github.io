@@ -1,4 +1,4 @@
-import { look, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1794839347';
+import { look, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1794840040';
 
 const $ = (s) => document.querySelector(s);
 const grid = $('#grid');
@@ -49,6 +49,10 @@ async function remoteApi() {
     async update(id, patch) {
       ok(await sb.from(TABLE).update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id).select('id').single());
     },
+    // 여러 상품의 위치·크기를 한 번에 저장 (전부 성공하거나 전부 실패)
+    async setLayout(changes) {
+      ok(await sb.rpc('catalog_set_layout', { changes }));
+    },
     async remove(id) {
       ok(await sb.from(TABLE).delete().eq('id', id));
     },
@@ -82,6 +86,10 @@ async function localApi() {
       return structuredClone(full);
     },
     async update(id, patch) { Object.assign(data.find((d) => d.id === id), patch); save(); },
+    async setLayout(changes) {
+      for (const { id, ...pos } of changes) Object.assign(data.find((d) => d.id === id), pos);
+      save();
+    },
     async remove(id) { data = data.filter((d) => d.id !== id); save(); },
     upload(blob) {
       return new Promise((res, rej) => {
@@ -120,14 +128,12 @@ async function run(label, fn) {
 
 /* ───────── 그리드 계산 ───────── */
 
-const collides = (id, x, y, w, hh) =>
-  items.some((o) => o.id !== id && x < o.x + o.w && x + w > o.x && y < o.y + o.h && y + hh > o.y);
+const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+const collides = (id, x, y, w, hh) => items.some((o) => o.id !== id && overlap({ x, y, w, h: hh }, o));
 
 function firstFree(w, hh) {
   for (let y = 0; ; y++) for (let x = 0; x <= COLS - w; x++) if (!collides(null, x, y, w, hh)) return { x, y };
 }
-
-const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 
 // 한 상품을 box 자리로 옮기거나 키웠을 때 나머지의 새 자리를 계산:
 // 겹치는 상품은 읽는 순서(왼→오, 위→아래)대로 옆으로 밀려나고, 줄 끝에 닿으면 다음 줄 처음으로 넘어감
@@ -152,18 +158,17 @@ function pushLayout(id, box) {
 
 // 밀려날 상품들을 예상 자리로 미끄러지듯 옮겨 보여줌 (저장 전 미리보기)
 function previewPush(moved, skip) {
-  const tiles = [...grid.querySelectorAll('.tile')].filter((t) => t !== skip);
-  const from = new Map(tiles.map((t) => [t, t.getBoundingClientRect()]));
+  const others = items.map((o) => [o, tiles.get(o.id)]).filter(([, t]) => t && t !== skip);
+  const from = new Map(others.map(([, t]) => [t, t.getBoundingClientRect()]));
   let bottom = 0;
-  for (const t of tiles) {
+  for (const [o, t] of others) {
     t.getAnimations().forEach((a) => a.cancel());
-    const o = items.find((i) => String(i.id) === t.dataset.id);
     const pos = { ...o, ...(moved.get(o.id) || {}) };
     bottom = Math.max(bottom, pos.y + pos.h);
     place(t, pos);
   }
   if (bottom + 2 > rows) setRows(bottom + 3);
-  for (const t of tiles) {
+  for (const [, t] of others) {
     const a = from.get(t);
     const b = t.getBoundingClientRect();
     const dx = a.left - b.left;
@@ -184,7 +189,8 @@ function commitLayout(it, box) {
   changes.forEach(([o, pos]) => Object.assign(o, pos));
   render();
   if (selected) fillPanel();
-  return run('저장 중…', () => Promise.all(changes.map(([o, pos]) => api.update(o.id, pos)))).catch(() => {
+  const payload = changes.map(([o]) => ({ id: o.id, x: o.x, y: o.y, w: o.w, h: o.h }));
+  return run('저장 중…', () => api.setLayout(payload)).catch(() => {
     changes.forEach(([o], i) => Object.assign(o, prev[i]));
     render();
     if (selected) fillPanel();
@@ -230,24 +236,49 @@ const place = (el, { x, y, w, h: hh }) => {
   el.style.setProperty('--h', hh);
 };
 
+// 타일은 상품 id별로 한 번만 만들고, 이후에는 바뀐 값만 갱신 (전체를 다시 그리면 사진이 깜빡임)
+const tiles = new Map();
+const tileOf = (it) => (it ? tiles.get(it.id) : null);
+
+function makeTile(it) {
+  return h(
+    'div',
+    { class: 'tile', 'data-id': it.id, tabindex: '0' },
+    it.kind === 'text' ? h('span', { class: 'txt' }, h('span', { class: 't' })) : h('img', { alt: '', draggable: 'false' }),
+    h('span', { class: 'badge' }),
+    ['nw', 'ne', 'sw', 'se'].map((d) => h('span', { class: `handle ${d}`, 'data-dir': d })),
+  );
+}
+
 function render() {
   setRows();
-  grid.replaceChildren(
-    ...items.map((it) => {
-      const el = h(
-        'div',
-        { class: 'tile' + (selected?.id === it.id ? ' selected' : ''), 'data-id': it.id, tabindex: '0' },
-        it.kind === 'text'
-          ? h('span', { class: 'txt' }, h('span', { class: 't', text: it.label || '' }))
-          : h('img', { src: it.thumb_url || it.image_url, alt: it.name || '', draggable: 'false' }),
-        h('span', { class: 'badge', text: `${it.w}×${it.h}` }),
-        ['nw', 'ne', 'sw', 'se'].map((d) => h('span', { class: `handle ${d}`, 'data-dir': d })),
-      );
-      place(el, it);
-      look(el, it);
-      return el;
-    }),
-  );
+  const alive = new Set();
+  for (const it of items) {
+    alive.add(it.id);
+    let el = tiles.get(it.id);
+    if (!el) {
+      el = makeTile(it);
+      tiles.set(it.id, el);
+      grid.append(el);
+    }
+    el.classList.toggle('selected', selected?.id === it.id);
+    el.querySelector('.badge').textContent = `${it.w}×${it.h}`;
+    if (it.kind === 'text') {
+      el.querySelector('.t').textContent = it.label || '';
+    } else {
+      const img = el.querySelector('img');
+      const src = it.thumb_url || it.image_url;
+      if (img.getAttribute('src') !== src) img.src = src;
+      img.alt = it.name || '';
+    }
+    place(el, it);
+    look(el, it);
+  }
+  for (const [id, el] of tiles) {
+    if (alive.has(id)) continue;
+    el.remove();
+    tiles.delete(id);
+  }
 }
 
 /* ───────── 드래그: 이동 / 크기 조절 ───────── */
@@ -260,6 +291,7 @@ grid.addEventListener('pointerdown', (e) => {
   if (!el) return;
   const it = items.find((i) => String(i.id) === el.dataset.id);
   if (!it) return;
+  commitPendingEdit();
   e.preventDefault();
   el.setPointerCapture(e.pointerId);
   drag = {
@@ -388,7 +420,10 @@ async function addFiles(files, cell) {
         const pos = nearestFree(cell, w, hh);
         cell = null;
         const [image_url, thumb_url] = await Promise.all([api.upload(full), api.upload(thumb)]);
-        const row = await api.insert({ image_url, thumb_url, ...pos, w, h: hh });
+        const row = await api.insert({ image_url, thumb_url, ...pos, w, h: hh }).catch((err) => {
+          api.removeFiles([image_url, thumb_url]); // 등록에 실패하면 방금 올린 사진도 정리
+          throw err;
+        });
         items.push(row);
         render();
         return row;
@@ -399,7 +434,7 @@ async function addFiles(files, cell) {
   }
   if (last) {
     select(last);
-    grid.querySelector(`[data-id="${last.id}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    tileOf(last)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 }
 
@@ -409,7 +444,10 @@ async function replaceMain(file) {
     const { full, thumb } = await prepare(file);
     const old = [it.image_url, it.thumb_url];
     const [image_url, thumb_url] = await Promise.all([api.upload(full), api.upload(thumb)]);
-    await api.update(it.id, { image_url, thumb_url });
+    await api.update(it.id, { image_url, thumb_url }).catch((err) => {
+      api.removeFiles([image_url, thumb_url]);
+      throw err;
+    });
     Object.assign(it, { image_url, thumb_url });
     api.removeFiles(old);
   });
@@ -423,7 +461,10 @@ async function addDetails(files) {
     const urls = [];
     for (const f of files) urls.push(await api.upload((await prepare(f)).full));
     const detail_urls = [...(it.detail_urls || []), ...urls];
-    await api.update(it.id, { detail_urls });
+    await api.update(it.id, { detail_urls }).catch((err) => {
+      api.removeFiles(urls);
+      throw err;
+    });
     it.detail_urls = detail_urls;
   });
   fillPanel();
@@ -453,7 +494,7 @@ $('#add-text').addEventListener('click', async () => {
   items.push(row);
   render();
   select(row);
-  grid.querySelector(`[data-id="${row.id}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  tileOf(row)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   form.elements.label.focus();
   form.elements.label.select();
 });
@@ -499,9 +540,16 @@ addEventListener('drop', (e) => e.preventDefault());
 
 /* ───────── 편집 패널 ───────── */
 
+// 입력란에 쓰던 내용이 있으면 다른 상품으로 넘어가기 전에 먼저 저장되게 함
+function commitPendingEdit() {
+  const el = document.activeElement;
+  if (el && form.contains(el)) el.blur();
+}
+
 function select(it) {
+  commitPendingEdit();
   selected = it;
-  grid.querySelectorAll('.tile').forEach((t) => t.classList.toggle('selected', !!it && t.dataset.id === String(it.id)));
+  for (const [id, el] of tiles) el.classList.toggle('selected', !!it && id === it.id);
   panel.hidden = !it;
   if (it) fillPanel();
 }
@@ -602,8 +650,6 @@ function syncOutputs() {
   form.querySelector('[data-for="st_sy"]').textContent = `${Math.round(form.elements.st_sy.value * 100)}%`;
   form.querySelector('[data-for="st_skew"]').textContent = `${form.elements.st_skew.value}°`;
 }
-
-const tileOf = (it) => it && grid.querySelector(`[data-id="${it.id}"]`);
 
 // 입력하는 동안 그리드에 바로 미리보기
 form.addEventListener('input', (e) => {
@@ -708,7 +754,7 @@ async function removeSelected() {
 $('#p-delete').addEventListener('click', removeSelected);
 
 addEventListener('keydown', (e) => {
-  const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName);
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
   if (e.key === 'Escape') {
     if (drag) endDrag(e, true);
     else if (!typing) select(null);
