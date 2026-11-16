@@ -90,7 +90,9 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   /* .hot/.focus는 catalog.js가 붙임: 칸 가장자리에서는 아무것도 고르지 않아 전체가 보인다 */
   .grid.focus .item:not(.hot) img { opacity: .18; }
   /* 올려놓은 상품은 칸 밖으로 넘쳐도 옆 칸 위에 보이게 */
-  .item.hot { --s: 1.07; z-index: 2; overflow: visible; }
+  /* 넘치는 범위는 clip-path로 부드럽게 넓혔다 좁히고, 줄어드는 동안에도 옆 칸 위에 머문다 (떼는 순간 잘려 보이지 않게) */
+  .item { overflow: visible; z-index: 0; clip-path: inset(0); transition: clip-path .5s var(--ease), z-index .5s step-end; }
+  .item.hot { --s: 1.07; z-index: 2; clip-path: inset(-12%); transition: clip-path .5s var(--ease); }
   .item.hot:active { --s: 1; }
 }
 
@@ -98,6 +100,9 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .label, .tile .txt {
   display: flex;
   align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--tc, inherit);
   min-width: 0;
   padding: 0 calc(100cqw / var(--cols) * .1);
   font-size: calc(100cqw / var(--cols) * .36 * var(--fit, 1));
@@ -112,9 +117,16 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .label .t, .tile .txt .t {
   display: block;
   min-width: 0;
-  transform: scaleY(var(--sy, 1)) skewX(calc(var(--sk, 0) * -1deg));
-  transform-origin: 0 50%;
+  transform: scale(var(--sx, 1), var(--sy, 1)) skewX(calc(var(--sk, 0) * -1deg));
+  transform-origin: 50% 50%;
 }
+/* 정렬: 기본은 상하좌우 가운데 */
+.label[data-align="left"], [data-align="left"] > .txt { justify-content: flex-start; text-align: left; }
+.label[data-align="right"], [data-align="right"] > .txt { justify-content: flex-end; text-align: right; }
+[data-align="left"] .t { transform-origin: 0 50%; }
+[data-align="right"] .t { transform-origin: 100% 50%; }
+/* 테두리만 있는 글자 */
+[data-outline] .t { color: transparent; -webkit-text-stroke: max(1px, .028em) var(--tc, var(--ink)); }
 [data-font="condensed"] { font-family: "Barlow Condensed", var(--font); --ls: -0.01em; }
 [data-font="didone"] { font-family: "Bodoni Moda", "Noto Serif KR", serif; --ls: -0.03em; }
 [data-font="serif"] { font-family: "Instrument Serif", "Noto Serif KR", serif; --ls: -0.02em; }
@@ -169,6 +181,28 @@ html.has-cur, html.has-cur * { cursor: none !important; }
 .cur.zoom i { transform: scale(1.5); }
 .cur.out::after { transform: scale(0); }
 .cur.down i { transform: scale(.72); }
+/* 상세 사진의 좌우 구역: 화살표로 바뀜 */
+.cur b {
+  position: absolute;
+  left: -18px;
+  top: -18px;
+  width: 37px;
+  height: 37px;
+  display: grid;
+  place-items: center;
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity .15s ease, transform .35s var(--ease);
+}
+.cur.prev b, .cur.next b { opacity: 1; }
+.cur.prev b::before { content: "←"; }
+.cur.next b::before { content: "→"; }
+.cur.prev::before, .cur.prev::after, .cur.next::before, .cur.next::after { transform: scale(0); }
+.cur.prev i, .cur.next i { transform: scale(1.5); }
+.cur.down.prev b { transform: translateX(-5px); }
+.cur.down.next b { transform: translateX(5px); }
 .cur.down.zoom i { transform: scale(1.2); }
 ::view-transition-group(cursor) { animation: none; z-index: 10; }
 ::view-transition-old(cursor) { display: none; }
@@ -191,11 +225,13 @@ html.has-cur, html.has-cur * { cursor: none !important; }
   font-variant-numeric: tabular-nums;
   pointer-events: none;
   opacity: 0;
-  scale: .8;
+  /* 위치는 translate, 등장은 scale → 항상 포인터 바로 옆(자기 왼쪽 위 모서리)에서 생기고 사라짐 */
+  scale: .6;
   transform-origin: 0 0;
-  transition: opacity .15s ease, scale .25s var(--ease), background .15s;
-  will-change: transform;
+  transition: opacity .12s ease, scale .2s var(--ease);
+  will-change: translate, scale;
 }
+.tag.flip { transform-origin: 100% 0; }
 .tag.on { opacity: 1; scale: 1; }
 .tag.sold { background: var(--accent); }
 
@@ -273,6 +309,7 @@ html.has-cur, html.has-cur * { cursor: none !important; }
 
 /* 이미지 갤러리: 가로 스냅 스크롤 (모바일 스와이프 / PC 썸네일) */
 .gallery {
+  position: relative;
   flex: 1;
   min-height: 0;
   margin: 20px -28px;
@@ -405,6 +442,8 @@ html.has-cur, html.has-cur * { cursor: none !important; }
   .page { padding: 18px; }
   .page.spec { border-left: 0; border-top: 1px solid var(--ink); overflow: visible; }
   .gallery { height: 78vw; flex: none; margin: 14px -18px; }
+  /* 사진이 여러 장이면 다음 사진이 살짝 보여서 옆으로 넘길 수 있음을 알 수 있게 */
+  .gallery:has(.slide + .slide) .slide { flex-basis: 84%; padding: 0 5%; }
   .thumbs { justify-content: center; min-height: 0; margin: 0; gap: 5px; }
   .thumbs:empty { display: none; }
   /* 모바일에서는 썸네일 대신 점 표시 */

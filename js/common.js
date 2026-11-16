@@ -45,7 +45,7 @@ export function safeUrl(u) {
 export async function loadLocal() {
   const raw = localStorage.getItem(LOCAL_KEY);
   if (raw) return JSON.parse(raw);
-  const { demoItems } = await import('./demo.js?v=1794846011');
+  const { demoItems } = await import('./demo.js?v=1794860033');
   const seed = demoItems();
   localStorage.setItem(LOCAL_KEY, JSON.stringify(seed));
   return seed;
@@ -77,6 +77,11 @@ export function look(el, it) {
     el.dataset.font = FONTS[st.font] ? st.font : 'grotesk';
     el.style.setProperty('--fw', st.bold === false ? 400 : 700);
     el.style.setProperty('--fi', st.italic ? 'italic' : 'normal');
+    el.dataset.align = ['left', 'right'].includes(st.align) ? st.align : 'center';
+    el.toggleAttribute('data-outline', !!st.outline);
+    if (/^#[0-9a-f]{6}$/i.test(st.color || '')) el.style.setProperty('--tc', st.color);
+    else el.style.removeProperty('--tc');
+    el.style.setProperty('--sx', Number(st.sx) || 1);
     el.style.setProperty('--sy', Number(st.sy) || 1);
     el.style.setProperty('--sk', Number(st.skew) || 0);
   } else {

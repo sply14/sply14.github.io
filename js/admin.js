@@ -1,4 +1,4 @@
-import { look, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1794846011';
+import { look, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1794860033';
 
 const $ = (s) => document.querySelector(s);
 const grid = $('#grid');
@@ -12,6 +12,10 @@ let items = [];
 let rows = 6;
 let selected = null;   // 편집 패널에 열려 있는 상품
 let fileTarget = null; // 파일 선택 창의 용도: {kind:'new', cell} | {kind:'main'} | {kind:'detail'}
+// 빈칸 없이 채우기: 켜면 모든 상품이 1행 1열부터 순서대로 빈틈없이 놓임 (끄면 자유 배치)
+const PACK_KEY = 'catalog-auto-pack';
+let autoPack = localStorage.getItem(PACK_KEY) !== 'off';
+let order = [];        // 채우기 순서 (상품 id)
 
 /* ───────── 데이터 계층 ───────── */
 
@@ -156,6 +160,99 @@ function pushLayout(id, box) {
   return moved;
 }
 
+/* 빈칸 없이 채우기 */
+
+const readingOrder = () => [...items].sort((a, b) => a.y - b.y || a.x - b.x).map((i) => i.id);
+const itemAt = (cell, skipId) =>
+  items.find((o) => o.id !== skipId && cell.x >= o.x && cell.x < o.x + o.w && cell.y >= o.y && cell.y < o.y + o.h);
+
+// seq 순서대로 하나씩, 들어갈 수 있는 가장 앞자리에 놓는다. size로 일부의 크기를 바꿔서 계산할 수 있음
+function packed(seq = order, size = {}) {
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const occ = [];
+  const out = new Map();
+  for (const id of seq) {
+    const src = { ...(byId.get(id) || {}), ...(size[id] || {}) };
+    const w = Math.min(COLS, src.w || 1);
+    const hh = src.h || 1;
+    find: for (let y = 0; ; y++) {
+      for (let x = 0; x <= COLS - w; x++) {
+        let ok = true;
+        for (let dy = 0; ok && dy < hh; dy++) for (let dx = 0; dx < w; dx++) if (occ[y + dy]?.[x + dx]) { ok = false; break; }
+        if (!ok) continue;
+        for (let dy = 0; dy < hh; dy++) for (let dx = 0; dx < w; dx++) (occ[y + dy] ||= [])[x + dx] = true;
+        out.set(id, { x, y, w, h: hh });
+        break find;
+      }
+    }
+  }
+  return out;
+}
+
+// 그 칸에 끼워 넣을 때의 순서 위치: 칸에 상품이 있으면 그 앞, 없으면 그 칸 다음에 오는 상품 앞
+function indexForCell(cell, seq = order, skipId) {
+  if (!cell) return seq.length;
+  const t = itemAt(cell, skipId);
+  if (t) return seq.indexOf(t.id);
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const i = seq.findIndex((id) => {
+    const o = byId.get(id);
+    return o && id !== skipId && (o.y > cell.y || (o.y === cell.y && o.x > cell.x));
+  });
+  return i < 0 ? seq.length : i;
+}
+
+// 끌어서 옮기거나 크기를 바꿨을 때 전체가 어떻게 놓일지 계산
+function plan(it, box, mode, cell) {
+  if (!autoPack) {
+    const map = pushLayout(it.id, box);
+    map.set(it.id, box);
+    return { map, order: null };
+  }
+  let seq = order;
+  const onSelf = cell && cell.x >= it.x && cell.x < it.x + it.w && cell.y >= it.y && cell.y < it.y + it.h;
+  if (mode === 'move' && cell && !onSelf) {
+    seq = order.slice();
+    const from = seq.indexOf(it.id);
+    const t = itemAt(cell, it.id);
+    if (t) {
+      // 다른 상품 위에 놓으면 둘이 자리를 맞바꿈
+      const to = seq.indexOf(t.id);
+      [seq[from], seq[to]] = [seq[to], seq[from]];
+    } else {
+      seq.splice(from, 1);
+      seq.splice(indexForCell(cell, seq, it.id), 0, it.id);
+    }
+  }
+  return { map: packed(seq, { [it.id]: { w: box.w, h: box.h } }), order: seq };
+}
+
+// 계산된 배치를 확정하고 저장. 실패하면 되돌림
+function commitChanges(map, newOrder) {
+  const changes = [...map]
+    .map(([id, pos]) => [items.find((i) => i.id === id), pos])
+    .filter(([o, pos]) => o && (pos.x !== o.x || pos.y !== o.y || (pos.w ?? o.w) !== o.w || (pos.h ?? o.h) !== o.h));
+  const prevOrder = order;
+  if (newOrder) order = newOrder;
+  if (!changes.length) {
+    render();
+    return Promise.resolve();
+  }
+  const prev = changes.map(([o]) => ({ x: o.x, y: o.y, w: o.w, h: o.h }));
+  changes.forEach(([o, pos]) => Object.assign(o, pos));
+  render();
+  if (selected) fillPanel();
+  const payload = changes.map(([o]) => ({ id: o.id, x: o.x, y: o.y, w: o.w, h: o.h }));
+  return run('저장 중…', () => api.setLayout(payload)).catch(() => {
+    changes.forEach(([o], i) => Object.assign(o, prev[i]));
+    order = prevOrder;
+    render();
+    if (selected) fillPanel();
+  });
+}
+
+const repack = () => (autoPack ? commitChanges(packed()) : Promise.resolve());
+
 // 밀려날 상품들을 예상 자리로 미끄러지듯 옮겨 보여줌 (저장 전 미리보기)
 function previewPush(moved, skip) {
   const others = items.map((o) => [o, tiles.get(o.id)]).filter(([, t]) => t && t !== skip);
@@ -179,22 +276,6 @@ function previewPush(moved, skip) {
       easing: 'cubic-bezier(.2, .7, .1, 1)',
     });
   }
-}
-
-// 배치 변경을 확정하고 저장 (밀려난 상품 포함)
-function commitLayout(it, box) {
-  const moved = pushLayout(it.id, box);
-  const changes = [[it, box], ...[...moved].map(([id, pos]) => [items.find((i) => i.id === id), pos])];
-  const prev = changes.map(([o]) => ({ x: o.x, y: o.y, w: o.w, h: o.h }));
-  changes.forEach(([o, pos]) => Object.assign(o, pos));
-  render();
-  if (selected) fillPanel();
-  const payload = changes.map(([o]) => ({ id: o.id, x: o.x, y: o.y, w: o.w, h: o.h }));
-  return run('저장 중…', () => api.setLayout(payload)).catch(() => {
-    changes.forEach(([o], i) => Object.assign(o, prev[i]));
-    render();
-    if (selected) fillPanel();
-  });
 }
 
 // 원하는 칸이 차 있으면 가장 가까운 빈 자리를 찾음
@@ -300,7 +381,7 @@ grid.addEventListener('pointerdown', (e) => {
     dir: e.target.closest('.handle')?.dataset.dir || '',
     sx: e.clientX, sy: e.clientY, scrollY,
     next: { x: it.x, y: it.y, w: it.w, h: it.h },
-    moved: false, ghost: null, key: '',
+    moved: false, ghost: null, key: '', plan: null,
   };
 });
 
@@ -357,12 +438,16 @@ grid.addEventListener('pointermove', (e) => {
     el.querySelector('.badge').textContent = `${n.w}×${n.h}`;
   }
   if (n.y + n.h + 1 > rows) setRows(n.y + n.h + 2);
-  place(drag.ghost, n);
-  // 놓일 자리가 바뀔 때마다 옆 상품들이 밀려날 모습을 미리 보여줌
-  const key = `${n.x},${n.y},${n.w},${n.h}`;
+  // 놓일 자리가 바뀔 때마다 나머지 상품들이 어떻게 움직일지 미리 보여줌
+  const cell = cellAt(e.clientX, e.clientY);
+  const key = autoPack && mode === 'move' ? `c${cell.x},${cell.y}` : `${n.x},${n.y},${n.w},${n.h}`;
   if (key !== drag.key) {
     drag.key = key;
-    previewPush(pushLayout(it.id, n), el);
+    drag.plan = plan(it, n, mode, cell);
+    const self = { ...n, ...drag.plan.map.get(it.id) };
+    if (self.y + self.h + 1 > rows) setRows(self.y + self.h + 2);
+    place(drag.ghost, self);
+    previewPush(drag.plan.map, el);
   }
 
   // 화면 가장자리에서 자동 스크롤
@@ -372,7 +457,7 @@ grid.addEventListener('pointermove', (e) => {
 
 function endDrag(e, cancel = false) {
   if (!drag) return;
-  const { el, it, next, moved, ghost } = drag;
+  const { el, it, moved, ghost, plan: planned } = drag;
   drag = null;
   ghost?.remove();
   el.classList.remove('active');
@@ -381,12 +466,11 @@ function endDrag(e, cancel = false) {
     if (!cancel) select(it);
     return;
   }
-  const changed = next.x !== it.x || next.y !== it.y || next.w !== it.w || next.h !== it.h;
-  if (cancel || !changed) {
+  if (cancel || !planned) {
     render();
     return;
   }
-  commitLayout(it, next);
+  commitChanges(planned.map, planned.order);
 }
 grid.addEventListener('pointerup', (e) => endDrag(e));
 grid.addEventListener('pointercancel', (e) => endDrag(e, true));
@@ -410,6 +494,7 @@ async function prepare(file) {
 async function addFiles(files, cell) {
   const list = [...files].filter((f) => f.type.startsWith('image/'));
   let last = null;
+  let at = autoPack ? indexForCell(cell) : 0;
   for (const [n, file] of list.entries()) {
     try {
       last = await run(`업로드 중… ${n + 1}/${list.length}`, async () => {
@@ -417,7 +502,10 @@ async function addFiles(files, cell) {
         // 항상 표시된 한 칸에 들어감 (크기는 올린 뒤 모서리를 끌어 조절)
         const w = 1;
         const hh = 1;
-        const pos = nearestFree(cell, w, hh);
+        const seq = order.slice();
+        seq.splice(at, 0, '__new');
+        const { x, y } = autoPack ? packed(seq, { __new: { w, h: hh } }).get('__new') : nearestFree(cell, w, hh);
+        const pos = { x, y };
         cell = null;
         const [image_url, thumb_url] = await Promise.all([api.upload(full), api.upload(thumb)]);
         const row = await api.insert({ image_url, thumb_url, ...pos, w, h: hh }).catch((err) => {
@@ -425,7 +513,9 @@ async function addFiles(files, cell) {
           throw err;
         });
         items.push(row);
+        order.splice(autoPack ? at++ : order.length, 0, row.id);
         render();
+        await repack();
         return row;
       });
     } catch {
@@ -490,8 +580,10 @@ function pick(target, multiple = true) {
 $('#add').addEventListener('click', () => pick({ kind: 'new', cell: null }));
 $('#add-text').addEventListener('click', async () => {
   const w = 3;
-  const row = await run('저장 중…', () => api.insert({ kind: 'text', label: '텍스트', ...firstFree(w, 1), w, h: 1 }));
+  const { x, y } = autoPack ? packed([...order, '__new'], { __new: { w, h: 1 } }).get('__new') : firstFree(w, 1);
+  const row = await run('저장 중…', () => api.insert({ kind: 'text', label: '텍스트', x, y, w, h: 1 }));
   items.push(row);
+  order.push(row.id);
   render();
   select(row);
   tileOf(row)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -516,11 +608,20 @@ grid.addEventListener('dragover', (e) => {
   e.dataTransfer.dropEffect = 'copy';
   const at = cellAt(e.clientX, e.clientY);
   if (at.y + 2 > rows) setRows(at.y + 3);
-  const cell = nearestFree(at, 1, 1);
   if (!dropGhost) {
     dropGhost = h('div', { class: 'ghost drop' });
     grid.append(dropGhost);
   }
+  if (autoPack) {
+    // 채우기 모드: 그 칸 순서에 끼워 넣었을 때 실제로 놓일 자리를 표시
+    if (dropCell?.x === at.x && dropCell?.y === at.y) return;
+    dropCell = at;
+    const seq = order.slice();
+    seq.splice(indexForCell(at), 0, '__new');
+    place(dropGhost, packed(seq, { __new: { w: 1, h: 1 } }).get('__new'));
+    return;
+  }
+  const cell = nearestFree(at, 1, 1);
   if (!dropCell || dropCell.x !== cell.x || dropCell.y !== cell.y) {
     dropCell = cell;
     place(dropGhost, { ...cell, w: 1, h: 1 });
@@ -565,6 +666,10 @@ function fillPanel() {
   form.elements.st_font.value = FONTS[st.font] ? st.font : 'grotesk';
   form.elements.st_bold.checked = st.bold !== false;
   form.elements.st_italic.checked = !!st.italic;
+  form.elements.st_align.value = ['left', 'right'].includes(st.align) ? st.align : 'center';
+  form.elements.st_color.value = /^#[0-9a-f]{6}$/i.test(st.color || '') ? st.color : '#0a0a0a';
+  form.elements.st_outline.checked = !!st.outline;
+  form.elements.st_sx.value = Number(st.sx) || 1;
   form.elements.st_sy.value = Number(st.sy) || 1;
   form.elements.st_skew.value = Number(st.skew) || 0;
   syncOutputs();
@@ -579,7 +684,7 @@ function fillPanel() {
   for (const k of ['label', 'name', 'code', 'size', 'material', 'description', 'buy_url', 'w', 'h']) form.elements[k].value = it[k] ?? '';
   form.elements.price.value = it.price ?? '';
   form.elements.sold.checked = !!it.sold;
-  form.elements.w.max = COLS - it.x;
+  form.elements.w.max = autoPack ? COLS : COLS - it.x;
 
   $('#p-details').replaceChildren(
     ...(it.detail_urls || []).map((url) =>
@@ -612,9 +717,10 @@ form.addEventListener('change', async (e) => {
   if (!it || !el.name) return;
 
   if (el.name === 'w' || el.name === 'h') {
-    const w = Math.min(COLS - it.x, Math.max(1, parseInt(form.elements.w.value, 10) || 1));
+    const w = Math.min(autoPack ? COLS : COLS - it.x, Math.max(1, parseInt(form.elements.w.value, 10) || 1));
     const hh = Math.max(1, parseInt(form.elements.h.value, 10) || 1);
-    await commitLayout(it, { x: it.x, y: it.y, w, h: hh });
+    const p = plan(it, { x: it.x, y: it.y, w, h: hh }, 'resize');
+    await commitChanges(p.map, p.order);
     return;
   }
 
@@ -641,12 +747,17 @@ const readTextStyle = () => ({
   font: form.elements.st_font.value,
   bold: form.elements.st_bold.checked,
   italic: form.elements.st_italic.checked,
+  align: form.elements.st_align.value || 'center',
+  color: form.elements.st_color.value,
+  outline: form.elements.st_outline.checked,
+  sx: Number(form.elements.st_sx.value) || 1,
   sy: Number(form.elements.st_sy.value) || 1,
   skew: Number(form.elements.st_skew.value) || 0,
 });
 
 function syncOutputs() {
   $('#scale-out').textContent = `${Math.round(form.elements.scale.value * 100)}%`;
+  form.querySelector('[data-for="st_sx"]').textContent = `${Math.round(form.elements.st_sx.value * 100)}%`;
   form.querySelector('[data-for="st_sy"]').textContent = `${Math.round(form.elements.st_sy.value * 100)}%`;
   form.querySelector('[data-for="st_skew"]').textContent = `${form.elements.st_skew.value}°`;
 }
@@ -748,8 +859,10 @@ async function removeSelected() {
   await run('삭제 중…', () => api.remove(it.id));
   api.removeFiles([it.image_url, it.thumb_url, ...(it.detail_urls || [])]);
   items = items.filter((i) => i.id !== it.id);
+  order = order.filter((id) => id !== it.id);
   select(null);
   render();
+  repack();
 }
 $('#p-delete').addEventListener('click', removeSelected);
 
@@ -783,8 +896,29 @@ async function enter() {
     clearTimeout(statusTimer);
   }
   items = await api.list();
+  order = readingOrder();
   render();
+  syncPack();
+  repack();
 }
+
+const packBtn = $('#pack');
+function syncPack() {
+  packBtn.textContent = `빈칸 없이 채우기: ${autoPack ? '켬' : '끔'}`;
+  packBtn.setAttribute('aria-pressed', String(autoPack));
+  grid.classList.toggle('packed', autoPack);
+}
+packBtn.addEventListener('click', () => {
+  if (drag) return;
+  autoPack = !autoPack;
+  localStorage.setItem(PACK_KEY, autoPack ? 'on' : 'off');
+  syncPack();
+  if (selected) fillPanel();
+  if (autoPack) {
+    order = readingOrder(); // 지금 놓인 순서 그대로 앞에서부터 채움
+    repack();
+  }
+});
 
 login.addEventListener('submit', async (e) => {
   e.preventDefault();

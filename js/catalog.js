@@ -1,4 +1,4 @@
-import { h, fetchItems, formatPrice, safeUrl, look, MOBILE_COLS } from './common.js?v=1794846011';
+import { h, fetchItems, formatPrice, safeUrl, look, MOBILE_COLS } from './common.js?v=1794860033';
 
 const grid = document.getElementById('grid');
 const detail = document.getElementById('detail');
@@ -8,6 +8,7 @@ const finePointer = matchMedia('(hover: hover) and (pointer: fine)').matches;
 let all = [];   // 그리드에 놓인 전체 (상품 + 텍스트)
 let items = []; // 상품만 (상세 팝업 대상)
 let current = -1;
+let photos = null; // 열려 있는 상세의 사진 넘기기 도구 {index, go, zone, count}
 let lastFocus = null;
 
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -54,13 +55,13 @@ function setupPointer() {
   if (!finePointer) return;
   const tag = h('div', { class: 'tag', 'aria-hidden': 'true' });
   document.body.append(tag);
-  let tx = 0, ty = 0, x = 0, y = 0, raf = 0, hovered = null;
+  let hovered = null;
 
-  const tick = () => {
-    x += (tx - x) * (reduced ? 1 : 0.22);
-    y += (ty - y) * (reduced ? 1 : 0.22);
-    tag.style.transform = `translate(${x + 16}px, ${y + 18}px)`;
-    raf = Math.abs(tx - x) + Math.abs(ty - y) > 0.3 ? requestAnimationFrame(tick) : 0;
+  // 가격표는 포인터에 딱 붙어 다님. 화면 오른쪽 끝에서는 포인터 왼쪽으로 넘김
+  const follow = (e) => {
+    const flip = e.clientX + 18 + tag.offsetWidth > innerWidth - 4;
+    tag.classList.toggle('flip', flip);
+    tag.style.translate = `${flip ? e.clientX - 14 - tag.offsetWidth : e.clientX + 14}px ${e.clientY + 16}px`;
   };
 
   const leave = () => {
@@ -84,8 +85,6 @@ function setupPointer() {
 
   grid.addEventListener('pointermove', (e) => {
     if (e.pointerType !== 'mouse') return;
-    tx = e.clientX;
-    ty = e.clientY;
     let el = null;
     if (hovered && inside(hovered, e, KEEP)) el = hovered;
     else {
@@ -100,7 +99,6 @@ function setupPointer() {
         grid.classList.add('focus');
         const it = items[el.dataset.i];
         const price = formatPrice(it);
-        if (!tag.classList.contains('on')) { x = tx; y = ty; }
         tag.textContent = price;
         tag.classList.toggle('sold', !!it.sold);
         tag.classList.toggle('on', !!price);
@@ -111,7 +109,7 @@ function setupPointer() {
       el.style.setProperty('--px', (((e.clientX - r.left) / r.width) * 2 - 1).toFixed(3));
       el.style.setProperty('--py', (((e.clientY - r.top) / r.height) * 2 - 1).toFixed(3));
     }
-    if (!raf) raf = requestAnimationFrame(tick);
+    if (el) follow(e); // 사라지는 중에는 제자리에서 사라짐
   });
   grid.addEventListener('pointerleave', leave);
   addEventListener('scroll', leave, { passive: true });
@@ -121,13 +119,16 @@ function setupPointer() {
 /* 커스텀 포인터: 맞춤표(+)가 누를 수 있는 곳에서 원으로 펼쳐지고, 확대 가능한 사진 위에서는 +/− */
 function setupCursor() {
   if (!finePointer) return;
-  const cur = h('div', { class: 'cur', 'aria-hidden': 'true' }, h('i'));
+  const cur = h('div', { class: 'cur', 'aria-hidden': 'true' }, h('i'), h('b'));
   document.body.append(cur);
   const root = document.documentElement;
 
-  const state = (target) => {
+  const state = (target, x) => {
     const slide = target?.closest?.('.slide');
-    cur.classList.toggle('zoom', !!slide);
+    const z = slide && x != null ? photos?.zone(x) : 0;
+    cur.classList.toggle('prev', z < 0);
+    cur.classList.toggle('next', z > 0);
+    cur.classList.toggle('zoom', !!slide && !z);
     cur.classList.toggle('out', !!slide?.classList.contains('zoom'));
     cur.classList.toggle('hot', !slide && !!target?.closest?.('a, button:not(.item), .item.hot'));
   };
@@ -137,12 +138,12 @@ function setupCursor() {
     root.classList.add('has-cur');
     cur.classList.add('on');
     cur.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
-    state(e.target);
+    state(e.target, e.clientX);
   });
   addEventListener('pointerdown', () => cur.classList.add('down'));
   addEventListener('pointerup', (e) => {
     cur.classList.remove('down');
-    requestAnimationFrame(() => state(document.elementFromPoint(e.clientX, e.clientY)));
+    requestAnimationFrame(() => state(document.elementFromPoint(e.clientX, e.clientY), e.clientX));
   });
   root.addEventListener('mouseleave', () => cur.classList.remove('on'));
   // 터치로 전환하면 기본 동작으로 복귀
@@ -177,7 +178,7 @@ function renderDetail(dir = 0) {
             type: 'button',
             'aria-label': `Image ${i + 1}`,
             'aria-current': String(i === 0),
-            onclick: () => gallery.scrollTo({ left: i * gallery.clientWidth, behavior: reduced ? 'auto' : 'smooth' }),
+            onclick: () => go(i),
           },
           h('img', { src, alt: '' }),
         ),
@@ -185,9 +186,41 @@ function renderDetail(dir = 0) {
     : [];
   const thumbs = h('div', { class: 'thumbs' }, dots);
 
+  const count = h('span', { class: 'count', text: images.length > 1 ? `1 / ${images.length}` : '' });
+
+  // 지금 가운데에 가장 가까운 사진
+  const index = () => {
+    const mid = gallery.scrollLeft + gallery.clientWidth / 2;
+    let best = 0, bd = Infinity;
+    slides.forEach((s, i) => {
+      const d = Math.abs(s.offsetLeft + s.offsetWidth / 2 - mid);
+      if (d < bd) { bd = d; best = i; }
+    });
+    return best;
+  };
+  const go = (i) => {
+    const s = slides[i];
+    if (!s) return false;
+    slides.forEach((x) => x.classList.remove('zoom'));
+    gallery.scrollTo({ left: s.offsetLeft - (gallery.clientWidth - s.offsetWidth) / 2, behavior: reduced ? 'auto' : 'smooth' });
+    return true;
+  };
+  // 사진의 왼쪽/오른쪽 가장자리 구역: 누르면 이전/다음 사진 (-1 / 1), 가운데는 0
+  const zone = (clientX) => {
+    if (slides.length < 2 || detail.querySelector('.slide.zoom')) return 0;
+    const r = gallery.getBoundingClientRect();
+    const f = (clientX - r.left) / r.width;
+    const i = index();
+    if (f < 0.3 && i > 0) return -1;
+    if (f > 0.7 && i < slides.length - 1) return 1;
+    return 0;
+  };
+  photos = { index, go, zone, count: slides.length };
+
   gallery.addEventListener('scroll', () => {
-    const idx = Math.round(gallery.scrollLeft / gallery.clientWidth);
+    const idx = index();
     dots.forEach((d, i) => d.setAttribute('aria-current', String(i === idx)));
+    if (images.length > 1) count.textContent = `${idx + 1} / ${images.length}`;
   }, { passive: true });
 
   // PC: 클릭하면 확대, 커서 위치를 따라 살펴보기
@@ -198,6 +231,8 @@ function renderDetail(dir = 0) {
       img.style.transformOrigin = `${((e.clientX - r.left) / r.width) * 100}% ${((e.clientY - r.top) / r.height) * 100}%`;
     };
     slide.addEventListener('click', (e) => {
+      const z = zone(e.clientX);
+      if (z) return void go(index() + z);
       if (!finePointer) return;
       origin(e);
       slide.classList.toggle('zoom');
@@ -218,7 +253,7 @@ function renderDetail(dir = 0) {
       h('div', { class: 'run' }, h('span', { text: it.code || '' }), h('span', { class: 'sold-mark', text: it.sold ? 'Sold' : '' })),
       gallery,
       thumbs,
-      h('div', { class: 'run' }, h('span', { text: pad2(current + 1) })),
+      h('div', { class: 'run' }, h('span', { text: pad2(current + 1) }), count),
     ),
     h(
       'section',
@@ -354,6 +389,7 @@ function close() {
 
   withTransition(() => {
     current = -1;
+    photos = null;
     detail.hidden = true;
     detail.replaceChildren();
     detail.style.background = '';
@@ -382,8 +418,9 @@ detail.addEventListener('click', (e) => {
 addEventListener('keydown', (e) => {
   if (current < 0) return;
   if (e.key === 'Escape') close();
-  else if (e.key === 'ArrowRight') step(1);
-  else if (e.key === 'ArrowLeft') step(-1);
+  // 좌우 화살표: 먼저 이 상품의 사진을 넘기고, 끝에 닿으면 이전/다음 상품으로
+  else if (e.key === 'ArrowRight') photos?.go(photos.index() + 1) || step(1);
+  else if (e.key === 'ArrowLeft') (photos?.index() > 0 && photos.go(photos.index() - 1)) || step(-1);
 });
 
 let hideTag;
