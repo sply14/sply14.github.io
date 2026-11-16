@@ -11,7 +11,7 @@ export const MOBILE_COLS = 5;  // 모바일 화면 가로 칸 수
 export const LOCAL =
   ['localhost', '127.0.0.1'].includes(location.hostname) &&
   new URLSearchParams(location.search).has('local');
-export const LOCAL_KEY = 'catalog-local-items';
+export const LOCAL_KEY = 'catalog-local-items-v2';
 
 export function h(tag, attrs = {}, ...kids) {
   const el = document.createElement(tag);

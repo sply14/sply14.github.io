@@ -37,11 +37,27 @@ const rows = [
   ['lamp', '#d9381e', 9, 2, 1, 2, 'Floor Lamp', 680000],
 ];
 
+const texts = [
+  ['chairs, tables', 0, 3, 3, 1],
+  ['lighting', 5, 3, 2, 1],
+];
+
 export function demoItems() {
+  const labels = texts.map(([label, x, y, w, h], i) => ({
+    id: `demo-text-${i + 1}`, kind: 'text', label, scale: 1, x, y, w, h,
+    name: '', code: '', price: null, sold: false, size: '', material: '', description: '', buy_url: '', image_url: '', thumb_url: '', detail_urls: [],
+  }));
+  return [...products(), ...labels];
+}
+
+function products() {
   return rows.map(([shape, color, x, y, w, h, name, price], i) => {
     const url = shapes[shape](color);
     return {
       id: `demo-${i + 1}`,
+      kind: 'product',
+      label: '',
+      scale: 1,
       name,
       code: `DM-${String(i + 1).padStart(2, '0')}`,
       price,

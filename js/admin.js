@@ -76,7 +76,7 @@ async function localApi() {
     async isAdmin() { return true; },
     async list() { return structuredClone(data); },
     async insert(row) {
-      const full = { id: crypto.randomUUID(), name: '', code: '', price: null, sold: false, size: '', material: '', description: '', buy_url: '', detail_urls: [], ...row };
+      const full = { id: crypto.randomUUID(), kind: 'product', label: '', scale: 1, name: '', code: '', price: null, sold: false, size: '', material: '', description: '', buy_url: '', detail_urls: [], ...row };
       data.push(full);
       save();
       return structuredClone(full);
@@ -127,6 +127,21 @@ function firstFree(w, hh) {
   for (let y = 0; ; y++) for (let x = 0; x <= COLS - w; x++) if (!collides(null, x, y, w, hh)) return { x, y };
 }
 
+// 원하는 칸이 차 있으면 가장 가까운 빈 자리를 찾음
+function nearestFree(cell, w, hh) {
+  if (!cell) return firstFree(w, hh);
+  let best = null;
+  const maxY = Math.max(rows, cell.y) + 4;
+  for (let y = 0; y <= maxY; y++) {
+    for (let x = 0; x <= COLS - w; x++) {
+      if (collides(null, x, y, w, hh)) continue;
+      const d = (x - cell.x) ** 2 + (y - cell.y) ** 2;
+      if (!best || d < best.d) best = { x, y, d };
+    }
+  }
+  return best ? { x: best.x, y: best.y } : firstFree(w, hh);
+}
+
 const cellSize = () => grid.clientWidth / COLS;
 
 function cellAt(clientX, clientY) {
@@ -158,11 +173,14 @@ function render() {
       const el = h(
         'div',
         { class: 'tile' + (selected?.id === it.id ? ' selected' : ''), 'data-id': it.id, tabindex: '0' },
-        h('img', { src: it.thumb_url || it.image_url, alt: it.name || '', draggable: 'false' }),
+        it.kind === 'text'
+          ? h('span', { class: 'txt', text: it.label || '' })
+          : h('img', { src: it.thumb_url || it.image_url, alt: it.name || '', draggable: 'false' }),
         h('span', { class: 'badge', text: `${it.w}×${it.h}` }),
-        h('span', { class: 'handle', title: '크기 조절' }),
+        ['nw', 'ne', 'sw', 'se'].map((d) => h('span', { class: `handle ${d}`, 'data-dir': d })),
       );
       place(el, it);
+      el.style.setProperty('--fit', Number(it.scale) || 1);
       return el;
     }),
   );
@@ -183,6 +201,7 @@ grid.addEventListener('pointerdown', (e) => {
   drag = {
     el, it,
     mode: e.target.closest('.handle') ? 'resize' : 'move',
+    dir: e.target.closest('.handle')?.dataset.dir || '',
     sx: e.clientX, sy: e.clientY, scrollY,
     next: { x: it.x, y: it.y, w: it.w, h: it.h },
     moved: false, ghost: null, ok: true,
@@ -208,10 +227,34 @@ grid.addEventListener('pointermove', (e) => {
     n.y = Math.max(0, Math.round(it.y + dy / c));
     el.style.transform = `translate(${dx}px, ${dy}px)`;
   } else {
-    n.w = Math.min(COLS - it.x, Math.max(1, Math.round(it.w + dx / c)));
-    n.h = Math.max(1, Math.round(it.h + dy / c));
-    el.style.width = `${Math.max(c * 0.5, it.w * c + dx)}px`;
-    el.style.height = `${Math.max(c * 0.5, it.h * c + dy)}px`;
+    // 잡은 모서리 쪽으로만 늘어나고 반대쪽 모서리는 고정
+    const d = drag.dir;
+    let fx = 0, fy = 0, fw = it.w * c, fh = it.h * c;
+    if (d.includes('e')) {
+      n.w = Math.min(COLS - it.x, Math.max(1, Math.round(it.w + dx / c)));
+      fw = Math.min((COLS - it.x) * c, Math.max(c * 0.5, it.w * c + dx));
+    }
+    if (d.includes('w')) {
+      const right = it.x + it.w;
+      n.x = Math.min(right - 1, Math.max(0, Math.round(it.x + dx / c)));
+      n.w = right - n.x;
+      fx = Math.max(-it.x * c, Math.min(dx, (it.w - 0.5) * c));
+      fw = it.w * c - fx;
+    }
+    if (d.includes('s')) {
+      n.h = Math.max(1, Math.round(it.h + dy / c));
+      fh = Math.max(c * 0.5, it.h * c + dy);
+    }
+    if (d.includes('n')) {
+      const bottom = it.y + it.h;
+      n.y = Math.min(bottom - 1, Math.max(0, Math.round(it.y + dy / c)));
+      n.h = bottom - n.y;
+      fy = Math.max(-it.y * c, Math.min(dy, (it.h - 0.5) * c));
+      fh = it.h * c - fy;
+    }
+    el.style.transform = `translate(${fx}px, ${fy}px)`;
+    el.style.width = `${fw}px`;
+    el.style.height = `${fh}px`;
     el.querySelector('.badge').textContent = `${n.w}×${n.h}`;
   }
   if (n.y + n.h + 1 > rows) setRows(n.y + n.h + 2);
@@ -254,17 +297,97 @@ grid.addEventListener('pointercancel', (e) => endDrag(e, true));
 
 /* ───────── 이미지 추가 ───────── */
 
-async function prepare(file) {
+// 사진 둘레의 빈 여백(투명 또는 단색 배경)을 찾아 상품만 남는 영역을 계산
+function contentBox(ctx, w, hh) {
+  const { data } = ctx.getImageData(0, 0, w, hh);
+  const px = (x, y) => (y * w + x) * 4;
+  const corners = [px(0, 0), px(w - 1, 0), px(0, hh - 1), px(w - 1, hh - 1)];
+  const transparent = corners.every((i) => data[i + 3] < 16);
+  const bg = corners[0];
+  if (!transparent) {
+    // 불투명 사진: 네 모서리 색이 거의 같을 때만 그 색을 배경으로 봄
+    const same = corners.every((i) => data[i + 3] > 240 && [0, 1, 2].every((c) => Math.abs(data[i + c] - data[bg + c]) < 14));
+    if (!same) return null;
+  }
+  const isContent = (i) =>
+    transparent
+      ? data[i + 3] > 12
+      : Math.abs(data[i] - data[bg]) + Math.abs(data[i + 1] - data[bg + 1]) + Math.abs(data[i + 2] - data[bg + 2]) > 36;
+  let x0 = w, y0 = hh, x1 = -1, y1 = -1;
+  for (let y = 0; y < hh; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!isContent(px(x, y))) continue;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
+  }
+  if (x1 < 0) return null;
+  const m = Math.round(Math.max(x1 - x0, y1 - y0) * 0.01);
+  x0 = Math.max(0, x0 - m);
+  y0 = Math.max(0, y0 - m);
+  x1 = Math.min(w - 1, x1 + m);
+  y1 = Math.min(hh - 1, y1 + m);
+  return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+}
+
+async function prepare(file, trim = true) {
   const bmp = await createImageBitmap(file);
-  const make = (max) => {
-    const s = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  let box = { x: 0, y: 0, w: bmp.width, h: bmp.height };
+  let trimmed = false;
+  if (trim) {
+    // 분석은 최대 1200px로 줄여서 하고, 결과 영역을 원본 좌표로 환산
+    const k = Math.min(1, 1200 / Math.max(bmp.width, bmp.height));
     const c = document.createElement('canvas');
-    c.width = Math.max(1, Math.round(bmp.width * s));
-    c.height = Math.max(1, Math.round(bmp.height * s));
-    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    c.width = Math.max(1, Math.round(bmp.width * k));
+    c.height = Math.max(1, Math.round(bmp.height * k));
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(bmp, 0, 0, c.width, c.height);
+    const b = contentBox(ctx, c.width, c.height);
+    if (b && (b.w < c.width * 0.97 || b.h < c.height * 0.97)) {
+      box = {
+        x: Math.floor(b.x / k),
+        y: Math.floor(b.y / k),
+        w: Math.min(bmp.width - Math.floor(b.x / k), Math.ceil(b.w / k)),
+        h: Math.min(bmp.height - Math.floor(b.y / k), Math.ceil(b.h / k)),
+      };
+      trimmed = true;
+    }
+  }
+  const make = (max) => {
+    const sc = Math.min(1, max / Math.max(box.w, box.h));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(box.w * sc));
+    c.height = Math.max(1, Math.round(box.h * sc));
+    c.getContext('2d').drawImage(bmp, box.x, box.y, box.w, box.h, 0, 0, c.width, c.height);
     return new Promise((res) => c.toBlob(res, 'image/webp', 0.9));
   };
-  return { full: await make(2000), thumb: await make(800), aspect: bmp.width / bmp.height };
+  return { full: await make(2000), thumb: await make(800), aspect: box.w / box.h, trimmed };
+}
+
+// 이미 올린 대표 사진의 여백을 잘라 다시 저장
+async function trimSelected() {
+  const it = selected;
+  if (!it || it.kind === 'text') return;
+  let changed = false;
+  await run('여백 분석 중…', async () => {
+    const blob = await (await fetch(it.image_url)).blob();
+    const { full, thumb, trimmed } = await prepare(blob, true);
+    if (!trimmed) return;
+    const old = [it.image_url, it.thumb_url];
+    const [image_url, thumb_url] = await Promise.all([api.upload(full), api.upload(thumb)]);
+    await api.update(it.id, { image_url, thumb_url });
+    Object.assign(it, { image_url, thumb_url });
+    api.removeFiles(old);
+    changed = true;
+  });
+  if (changed) {
+    render();
+    fillPanel();
+  } else {
+    status('잘라낼 여백이 없습니다 — 아래 사진 크기 슬라이더로 키워 보세요');
+  }
 }
 
 async function addFiles(files, cell) {
@@ -277,8 +400,7 @@ async function addFiles(files, cell) {
         // 사진 비율로 기본 칸 수 추천: 가로로 긴 제품은 2×1, 세로로 긴 제품은 1×2
         const w = aspect > 1.6 ? 2 : 1;
         const hh = aspect < 0.62 ? 2 : 1;
-        const fits = cell && cell.x + w <= COLS && !collides(null, cell.x, cell.y, w, hh);
-        const pos = fits ? cell : firstFree(w, hh);
+        const pos = nearestFree(cell && { x: Math.min(cell.x, COLS - w), y: cell.y }, w, hh);
         cell = null;
         const [image_url, thumb_url] = await Promise.all([api.upload(full), api.upload(thumb)]);
         const row = await api.insert({ image_url, thumb_url, ...pos, w, h: hh });
@@ -340,21 +462,52 @@ function pick(target, multiple = true) {
 }
 
 $('#add').addEventListener('click', () => pick({ kind: 'new', cell: null }));
+$('#add-text').addEventListener('click', async () => {
+  const w = 3;
+  const row = await run('저장 중…', () => api.insert({ kind: 'text', label: '텍스트', ...firstFree(w, 1), w, h: 1 }));
+  items.push(row);
+  render();
+  select(row);
+  grid.querySelector(`[data-id="${row.id}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  form.elements.label.focus();
+  form.elements.label.select();
+});
 grid.addEventListener('dblclick', (e) => {
   if (e.target.closest('.tile')) return;
   pick({ kind: 'new', cell: cellAt(e.clientX, e.clientY) });
 });
 
-// 파일을 그리드에 끌어다 놓기
+// 파일을 그리드에 끌어다 놓기: 사진이 들어갈 칸 하나만 표시
+let dropGhost = null;
+let dropCell = null;
+const clearDrop = () => {
+  dropGhost?.remove();
+  dropGhost = dropCell = null;
+};
 grid.addEventListener('dragover', (e) => {
+  if (![...e.dataTransfer.types].includes('Files')) return;
   e.preventDefault();
-  grid.classList.add('dropping');
+  e.dataTransfer.dropEffect = 'copy';
+  const at = cellAt(e.clientX, e.clientY);
+  if (at.y + 2 > rows) setRows(at.y + 3);
+  const cell = nearestFree(at, 1, 1);
+  if (!dropGhost) {
+    dropGhost = h('div', { class: 'ghost drop' });
+    grid.append(dropGhost);
+  }
+  if (!dropCell || dropCell.x !== cell.x || dropCell.y !== cell.y) {
+    dropCell = cell;
+    place(dropGhost, { ...cell, w: 1, h: 1 });
+  }
 });
-grid.addEventListener('dragleave', () => grid.classList.remove('dropping'));
+grid.addEventListener('dragleave', (e) => {
+  if (!grid.contains(e.relatedTarget)) clearDrop();
+});
 grid.addEventListener('drop', (e) => {
   e.preventDefault();
-  grid.classList.remove('dropping');
-  if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files, cellAt(e.clientX, e.clientY));
+  const cell = dropCell || cellAt(e.clientX, e.clientY);
+  clearDrop();
+  if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files, cell);
 });
 addEventListener('dragover', (e) => e.preventDefault());
 addEventListener('drop', (e) => e.preventDefault());
@@ -370,9 +523,16 @@ function select(it) {
 
 function fillPanel() {
   const it = selected;
-  $('#p-size').textContent = `${it.w} × ${it.h} 칸`;
-  $('#p-img').src = it.thumb_url || it.image_url;
-  for (const k of ['name', 'code', 'size', 'material', 'description', 'buy_url', 'w', 'h']) form.elements[k].value = it[k] ?? '';
+  const isText = it.kind === 'text';
+  $('#p-size').textContent = `${isText ? '텍스트 · ' : ''}${it.w} × ${it.h} 칸`;
+  $('#f-text').hidden = !isText;
+  $('#f-product').hidden = isText;
+  $('#scale-label').textContent = isText ? '글자 크기' : '칸 안에서 사진 크기';
+  $('#p-delete').textContent = isText ? '텍스트 삭제' : '상품 삭제';
+  form.elements.scale.value = Number(it.scale) || 1;
+  $('#scale-out').textContent = `${Math.round((Number(it.scale) || 1) * 100)}%`;
+  $('#p-img').src = it.thumb_url || it.image_url || '';
+  for (const k of ['label', 'name', 'code', 'size', 'material', 'description', 'buy_url', 'w', 'h']) form.elements[k].value = it[k] ?? '';
   form.elements.price.value = it.price ?? '';
   form.elements.sold.checked = !!it.sold;
   form.elements.w.max = COLS - it.x;
@@ -423,19 +583,35 @@ form.addEventListener('change', async (e) => {
   }
 
   let value;
-  if (el.name === 'sold') value = el.checked;
+  if (el.name === 'scale') value = Number(el.value) || 1;
+  else if (el.name === 'label') value = el.value;
+  else if (el.name === 'sold') value = el.checked;
   else if (el.name === 'price') value = el.value === '' ? null : Math.max(0, Math.round(Number(el.value)));
   else value = el.value.trim();
   await run('저장 중…', () => api.update(it.id, { [el.name]: value }));
   it[el.name] = value;
 });
 
+// 글자·크기는 입력하는 동안 그리드에 바로 미리보기
+form.addEventListener('input', (e) => {
+  const it = selected;
+  const tile = it && grid.querySelector(`[data-id="${it.id}"]`);
+  if (!tile) return;
+  if (e.target.name === 'scale') {
+    tile.style.setProperty('--fit', e.target.value);
+    $('#scale-out').textContent = `${Math.round(e.target.value * 100)}%`;
+  } else if (e.target.name === 'label') {
+    tile.querySelector('.txt').textContent = e.target.value;
+  }
+});
+$('#p-trim').addEventListener('click', () => trimSelected().catch(() => {}));
+
 $('#p-replace').addEventListener('click', () => pick({ kind: 'main' }, false));
 $('#p-close').addEventListener('click', () => select(null));
 
 async function removeSelected() {
   const it = selected;
-  if (!it || !confirm(`"${it.name || it.code || '이 상품'}"을(를) 삭제할까요? 되돌릴 수 없습니다.`)) return;
+  if (!it || !confirm(`"${it.label || it.name || it.code || '이 상품'}"을(를) 삭제할까요? 되돌릴 수 없습니다.`)) return;
   await run('삭제 중…', () => api.remove(it.id));
   api.removeFiles([it.image_url, it.thumb_url, ...(it.detail_urls || [])]);
   items = items.filter((i) => i.id !== it.id);

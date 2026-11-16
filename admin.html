@@ -26,11 +26,12 @@
       <strong>Catalog — Admin</strong>
       <span id="status" class="status" role="status"></span>
       <span class="spacer"></span>
+      <button id="add-text" type="button">+ 텍스트</button>
       <button id="add" type="button">+ 상품 추가</button>
       <a id="view" href="./" target="_blank" rel="noopener">사이트 보기 ↗</a>
       <button id="logout" type="button">로그아웃</button>
     </header>
-    <p class="hint">드래그 = 이동 · 오른쪽 아래 모서리 = 크기 · 클릭 = 정보 수정 · 이미지 파일을 그리드에 끌어다 놓거나 빈 칸을 더블클릭 = 추가</p>
+    <p class="hint">드래그 = 이동 · 네 모서리 = 크기 · 클릭 = 수정 · 이미지 파일을 원하는 칸에 끌어다 놓거나 빈 칸을 더블클릭 = 상품 추가</p>
 
     <div class="wrap">
       <main id="grid" class="grid edit"></main>
@@ -42,9 +43,16 @@
         <button id="p-close" type="button" aria-label="닫기">닫기 ×</button>
       </div>
       <form id="form" autocomplete="off">
+        <div id="f-text" class="group">
+          <label class="field"><span>텍스트</span><textarea name="label" rows="3" placeholder="chairs, stools and small armchairs"></textarea></label>
+        </div>
+        <div id="f-product" class="group">
         <div class="p-image">
           <img id="p-img" alt="">
-          <button id="p-replace" type="button">대표 사진 교체</button>
+          <div class="p-image-actions">
+            <button id="p-replace" type="button">사진 교체</button>
+            <button id="p-trim" type="button" title="사진 둘레의 빈 여백을 잘라내 상품이 칸을 꽉 채우게 합니다">여백 자동 제거</button>
+          </div>
         </div>
         <div class="field">
           <span>상세 사진</span>
@@ -60,6 +68,10 @@
         <label class="field"><span>소재</span><input name="material"></label>
         <label class="field"><span>설명</span><textarea name="description" rows="4"></textarea></label>
         <label class="field"><span>구매 링크</span><input name="buy_url" placeholder="https://… 또는 mailto:…"></label>
+        </div>
+        <label class="field"><span id="scale-label">칸 안에서 사진 크기</span>
+          <span class="range"><input name="scale" type="range" min="0.5" max="1.6" step="0.05"><output id="scale-out"></output></span>
+        </label>
         <div class="field two">
           <label><span>가로 칸</span><input name="w" type="number" min="1" max="10" step="1"></label>
           <label><span>세로 칸</span><input name="h" type="number" min="1" step="1"></label>

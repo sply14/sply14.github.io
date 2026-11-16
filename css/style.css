@@ -31,14 +31,17 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(var(--cols), 1fr);
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
   grid-auto-rows: calc(100cqw / var(--cols));
+}
+
+.item, .label {
+  grid-column: var(--x) / span var(--w);
+  grid-row: var(--y) / span var(--h);
 }
 
 .item {
   position: relative;
-  grid-column: var(--x) / span var(--w);
-  grid-row: var(--y) / span var(--h);
   min-width: 0;
   min-height: 0;
   display: block;
@@ -60,7 +63,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   object-fit: contain;
   user-select: none;
   -webkit-user-drag: none;
-  transform: translate(calc(var(--px, 0) * 3%), calc(var(--py, 0) * 3%)) scale(var(--s, 1));
+  transform: translate(calc(var(--px, 0) * 3%), calc(var(--py, 0) * 3%)) scale(calc(var(--s, 1) * var(--fit, 1)));
   transition: opacity .3s ease, transform .5s var(--ease);
 }
 
@@ -87,6 +90,74 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   .item:hover { --s: 1.07; z-index: 2; }
   .item:hover:active { --s: 1; }
 }
+
+/* 그리드 안 텍스트 블록 (카탈로그 포스터의 분류 제목처럼) */
+.label, .tile .txt {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 0 calc(100cqw / var(--cols) * .1);
+  font-size: calc(100cqw / var(--cols) * .36 * var(--fit, 1));
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: .92;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.label {
+  animation: arrive .7s var(--ease) both;
+  animation-delay: calc(var(--d) * 28ms);
+  transition: opacity .3s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .grid:has(.item:hover) .label { opacity: .18; }
+}
+
+/* 커스텀 포인터: 인쇄 맞춤표(+) 모양. 누를 수 있는 곳에서는 원이 펼쳐짐 */
+html.has-cur, html.has-cur * { cursor: none !important; }
+.cur {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 100;
+  pointer-events: none;
+  color: #fff;
+  mix-blend-mode: difference;
+  opacity: 0;
+  transition: opacity .2s ease;
+  will-change: transform;
+  view-transition-name: cursor;
+}
+.cur.on { opacity: 1; }
+.cur::before, .cur::after {
+  content: "";
+  position: absolute;
+  background: currentColor;
+  transition: transform .35s var(--ease);
+}
+.cur::before { left: -10px; top: 0; width: 21px; height: 1px; }
+.cur::after { left: 0; top: -10px; width: 1px; height: 21px; }
+.cur i {
+  position: absolute;
+  left: -18px;
+  top: -18px;
+  width: 37px;
+  height: 37px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  transform: scale(0);
+  transition: transform .4s var(--ease);
+}
+.cur.hot::before, .cur.hot::after { transform: scale(.38); }
+.cur.hot i { transform: scale(1); }
+.cur.zoom::before, .cur.zoom::after { transform: scale(.62); }
+.cur.zoom i { transform: scale(1.5); }
+.cur.out::after { transform: scale(0); }
+.cur.down i { transform: scale(.72); }
+.cur.down.zoom i { transform: scale(1.2); }
+::view-transition-group(cursor) { animation: none; z-index: 10; }
+::view-transition-old(cursor) { display: none; }
+::view-transition-new(cursor) { animation: none; mix-blend-mode: difference; }
 
 /* 커서를 따라다니는 가격 태그 */
 .tag {
@@ -116,7 +187,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 @media (max-width: 767px) {
   :root { --cols: 5; --pad: 3vw; }
   .grid { grid-auto-flow: dense; }
-  .item {
+  .item, .label {
     grid-column: span var(--mw);
     grid-row: span var(--mh);
   }

@@ -64,6 +64,8 @@
 .bar a { color: inherit; text-decoration: none; }
 .bar button, .bar a { font-weight: 700; }
 .bar button:hover, .bar a:hover { color: var(--accent); }
+.bar #add-text { border: 1px solid var(--ink); padding: 7px 11px 6px; }
+.bar #add-text:hover { background: var(--ink); color: var(--paper); }
 .bar #add { background: var(--ink); color: var(--paper); padding: 8px 12px 7px; }
 .bar #add:hover { background: var(--accent); color: var(--paper); }
 .status { color: var(--mute); font-weight: 400; overflow: hidden; text-overflow: ellipsis; }
@@ -83,7 +85,6 @@
   user-select: none;
   -webkit-user-select: none;
 }
-.grid.edit.dropping { background-color: #fafafa; }
 
 .tile {
   position: relative;
@@ -103,7 +104,9 @@
   height: 80%;
   object-fit: contain;
   pointer-events: none;
+  transform: scale(var(--fit, 1));
 }
+.tile .txt { position: absolute; inset: 0; pointer-events: none; }
 .tile:hover, .tile.selected, .tile.active { box-shadow: inset 0 0 0 1px var(--ink); }
 .tile.selected { box-shadow: inset 0 0 0 2px var(--ink); }
 .tile.active {
@@ -118,8 +121,9 @@
 
 .tile .badge {
   position: absolute;
-  left: 0;
+  left: 50%;
   top: 0;
+  transform: translateX(-50%);
   padding: 4px 5px 3px;
   background: var(--ink);
   color: var(--paper);
@@ -134,23 +138,24 @@
 
 .tile .handle {
   position: absolute;
-  right: 0;
-  bottom: 0;
   width: 22px;
   height: 22px;
-  cursor: nwse-resize;
   opacity: 0;
   touch-action: none;
 }
 .tile .handle::after {
   content: "";
   position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   background: var(--ink);
 }
+.tile .handle.nw, .tile .handle.nw::after { left: 0; top: 0; }
+.tile .handle.ne, .tile .handle.ne::after { right: 0; top: 0; }
+.tile .handle.sw, .tile .handle.sw::after { left: 0; bottom: 0; }
+.tile .handle.se, .tile .handle.se::after { right: 0; bottom: 0; }
+.tile .handle.nw, .tile .handle.se { cursor: nwse-resize; }
+.tile .handle.ne, .tile .handle.sw { cursor: nesw-resize; }
 .tile:hover .handle, .tile.selected .handle, .tile.active .handle { opacity: 1; }
 @media (hover: none) { .tile .handle, .tile .badge { opacity: 1; } .tile { box-shadow: inset 0 0 0 1px #cfcfcf; } }
 
@@ -163,6 +168,12 @@
   pointer-events: none;
   z-index: 5;
 }
+.ghost.drop {
+  background: var(--ink);
+  outline: 0;
+  animation: dropPulse 1s ease-in-out infinite alternate;
+}
+@keyframes dropPulse { from { opacity: .9; } to { opacity: .55; } }
 .ghost.bad { background: rgba(217, 56, 30, .16); outline-color: var(--accent); }
 
 /* 편집 패널 */
@@ -196,7 +207,7 @@
 }
 .panel-head button { font-weight: 700; }
 .panel-head button:hover { color: var(--accent); }
-.panel form { display: grid; gap: 18px; }
+.panel form, .panel .group { display: grid; gap: 18px; }
 .field { display: grid; gap: 2px; }
 .field.two { grid-template-columns: 1fr 1fr; gap: 16px; align-items: end; }
 .field.two label { display: grid; gap: 2px; }
@@ -205,14 +216,16 @@
 
 .p-image { border: 1px solid var(--ink); }
 .p-image img { display: block; width: 100%; height: 180px; object-fit: contain; padding: 14px; }
+.p-image-actions { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--ink); }
 .p-image button {
-  display: block;
-  width: 100%;
-  padding: 10px;
-  border-top: 1px solid var(--ink);
+  padding: 10px 4px;
   font-size: 11px;
   font-weight: 700;
 }
+.p-image button + button { border-left: 1px solid var(--ink); }
+.range { display: flex; align-items: center; gap: 12px; padding-top: 6px; }
+.admin .range input { padding: 0; border: 0; box-shadow: none; accent-color: var(--ink); }
+.range output { width: 40px; text-align: right; font-size: 12px; font-weight: 400; letter-spacing: 0; font-variant-numeric: tabular-nums; }
 .p-image button:hover { background: var(--ink); color: var(--paper); }
 
 .p-details { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }

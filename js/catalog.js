@@ -5,20 +5,25 @@ const detail = document.getElementById('detail');
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const finePointer = matchMedia('(hover: hover) and (pointer: fine)').matches;
 
-let items = [];
+let all = [];   // 그리드에 놓인 전체 (상품 + 텍스트)
+let items = []; // 상품만 (상세 팝업 대상)
 let current = -1;
 let lastFocus = null;
 
 const pad2 = (n) => String(n).padStart(2, '0');
-const thumbOf = (i) => grid.children[i]?.querySelector('img');
+const cellOf = (i) => grid.querySelector(`.item[data-i="${i}"]`);
+const thumbOf = (i) => cellOf(i)?.querySelector('img');
 
 /* ───────── 그리드 ───────── */
 
 function renderGrid() {
   grid.replaceChildren(
-    ...items.map((it, i) => {
+    ...all.map((it) => {
       const mw = Math.min(it.w, MOBILE_COLS);
       const mh = Math.max(1, Math.round((it.h * mw) / it.w));
+      const pos = `--x:${it.x + 1};--y:${it.y + 1};--w:${it.w};--h:${it.h};--mw:${mw};--mh:${mh};--d:${Math.min(it.x + it.y, 24)};--fit:${Number(it.scale) || 1}`;
+      if (it.kind === 'text') return h('div', { class: 'label', style: pos, text: it.label || '' });
+      const i = items.indexOf(it);
       const price = formatPrice(it);
       return h(
         'button',
@@ -26,7 +31,7 @@ function renderGrid() {
           class: 'item',
           type: 'button',
           'data-i': i,
-          style: `--x:${it.x + 1};--y:${it.y + 1};--w:${it.w};--h:${it.h};--mw:${mw};--mh:${mh};--d:${Math.min(it.x + it.y, 24)}`,
+          style: pos,
           'aria-label': [it.name, price].filter(Boolean).join(', ') || 'Product',
           onclick: () => open(i),
         },
@@ -86,6 +91,40 @@ function setupPointer() {
   grid.addEventListener('pointerleave', leave);
   addEventListener('scroll', leave, { passive: true });
   return leave;
+}
+
+/* 커스텀 포인터: 맞춤표(+)가 누를 수 있는 곳에서 원으로 펼쳐지고, 확대 가능한 사진 위에서는 +/− */
+function setupCursor() {
+  if (!finePointer) return;
+  const cur = h('div', { class: 'cur', 'aria-hidden': 'true' }, h('i'));
+  document.body.append(cur);
+  const root = document.documentElement;
+
+  const state = (target) => {
+    const slide = target?.closest?.('.slide');
+    cur.classList.toggle('zoom', !!slide);
+    cur.classList.toggle('out', !!slide?.classList.contains('zoom'));
+    cur.classList.toggle('hot', !slide && !!target?.closest?.('a, button, .item'));
+  };
+
+  addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    root.classList.add('has-cur');
+    cur.classList.add('on');
+    cur.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
+    state(e.target);
+  });
+  addEventListener('pointerdown', () => cur.classList.add('down'));
+  addEventListener('pointerup', (e) => {
+    cur.classList.remove('down');
+    requestAnimationFrame(() => state(document.elementFromPoint(e.clientX, e.clientY)));
+  });
+  root.addEventListener('mouseleave', () => cur.classList.remove('on'));
+  // 터치로 전환하면 기본 동작으로 복귀
+  addEventListener('touchstart', () => {
+    cur.classList.remove('on');
+    root.classList.remove('has-cur');
+  }, { passive: true });
 }
 
 /* ───────── 상세 ───────── */
@@ -308,7 +347,7 @@ function step(d) {
   renderDetail(d);
   history.replaceState(null, '', `#${items[current].id}`);
   // 닫을 때 돌아갈 자리가 보이도록 그리드도 따라 스크롤
-  grid.children[current]?.scrollIntoView({ block: 'nearest' });
+  cellOf(current)?.scrollIntoView({ block: 'nearest' });
 }
 
 detail.addEventListener('click', (e) => {
@@ -324,10 +363,12 @@ addEventListener('keydown', (e) => {
 
 let hideTag;
 try {
-  items = await fetchItems();
-  items.sort((a, b) => a.y - b.y || a.x - b.x);
+  all = await fetchItems();
+  all.sort((a, b) => a.y - b.y || a.x - b.x);
+  items = all.filter((it) => it.kind !== 'text');
   renderGrid();
   hideTag = setupPointer();
+  setupCursor();
   const id = decodeURIComponent(location.hash.slice(1));
   const i = id ? items.findIndex((it) => String(it.id) === id) : -1;
   if (i >= 0) open(i, { instant: true });
