@@ -174,7 +174,6 @@
   animation: dropPulse 1s ease-in-out infinite alternate;
 }
 @keyframes dropPulse { from { opacity: .9; } to { opacity: .55; } }
-.ghost.bad { background: rgba(217, 56, 30, .16); outline-color: var(--accent); }
 
 /* 편집 패널 */
 .panel {

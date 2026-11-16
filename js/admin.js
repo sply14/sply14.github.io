@@ -127,6 +127,70 @@ function firstFree(w, hh) {
   for (let y = 0; ; y++) for (let x = 0; x <= COLS - w; x++) if (!collides(null, x, y, w, hh)) return { x, y };
 }
 
+const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+
+// 한 상품을 box 자리로 옮기거나 키웠을 때 나머지의 새 자리를 계산:
+// 겹치는 상품은 읽는 순서(왼→오, 위→아래)대로 옆으로 밀려나고, 줄 끝에 닿으면 다음 줄 처음으로 넘어감
+function pushLayout(id, box) {
+  const placed = [box];
+  const moved = new Map();
+  const others = items.filter((o) => o.id !== id).sort((a, b) => a.y - b.y || a.x - b.x);
+  for (const o of others) {
+    const p = { x: o.x, y: o.y, w: o.w, h: o.h };
+    while (placed.some((q) => overlap(p, q))) {
+      p.x++;
+      if (p.x + p.w > COLS) {
+        p.x = 0;
+        p.y++;
+      }
+    }
+    placed.push(p);
+    if (p.x !== o.x || p.y !== o.y) moved.set(o.id, { x: p.x, y: p.y });
+  }
+  return moved;
+}
+
+// 밀려날 상품들을 예상 자리로 미끄러지듯 옮겨 보여줌 (저장 전 미리보기)
+function previewPush(moved, skip) {
+  const tiles = [...grid.querySelectorAll('.tile')].filter((t) => t !== skip);
+  const from = new Map(tiles.map((t) => [t, t.getBoundingClientRect()]));
+  let bottom = 0;
+  for (const t of tiles) {
+    t.getAnimations().forEach((a) => a.cancel());
+    const o = items.find((i) => String(i.id) === t.dataset.id);
+    const pos = { ...o, ...(moved.get(o.id) || {}) };
+    bottom = Math.max(bottom, pos.y + pos.h);
+    place(t, pos);
+  }
+  if (bottom + 2 > rows) setRows(bottom + 3);
+  for (const t of tiles) {
+    const a = from.get(t);
+    const b = t.getBoundingClientRect();
+    const dx = a.left - b.left;
+    const dy = a.top - b.top;
+    if (Math.abs(dx) + Math.abs(dy) < 1) continue;
+    t.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], {
+      duration: 320,
+      easing: 'cubic-bezier(.2, .7, .1, 1)',
+    });
+  }
+}
+
+// 배치 변경을 확정하고 저장 (밀려난 상품 포함)
+function commitLayout(it, box) {
+  const moved = pushLayout(it.id, box);
+  const changes = [[it, box], ...[...moved].map(([id, pos]) => [items.find((i) => i.id === id), pos])];
+  const prev = changes.map(([o]) => ({ x: o.x, y: o.y, w: o.w, h: o.h }));
+  changes.forEach(([o, pos]) => Object.assign(o, pos));
+  render();
+  if (selected) fillPanel();
+  return run('저장 중…', () => Promise.all(changes.map(([o, pos]) => api.update(o.id, pos)))).catch(() => {
+    changes.forEach(([o], i) => Object.assign(o, prev[i]));
+    render();
+    if (selected) fillPanel();
+  });
+}
+
 // 원하는 칸이 차 있으면 가장 가까운 빈 자리를 찾음
 function nearestFree(cell, w, hh) {
   if (!cell) return firstFree(w, hh);
@@ -204,7 +268,7 @@ grid.addEventListener('pointerdown', (e) => {
     dir: e.target.closest('.handle')?.dataset.dir || '',
     sx: e.clientX, sy: e.clientY, scrollY,
     next: { x: it.x, y: it.y, w: it.w, h: it.h },
-    moved: false, ghost: null, ok: true,
+    moved: false, ghost: null, key: '',
   };
 });
 
@@ -258,9 +322,13 @@ grid.addEventListener('pointermove', (e) => {
     el.querySelector('.badge').textContent = `${n.w}×${n.h}`;
   }
   if (n.y + n.h + 1 > rows) setRows(n.y + n.h + 2);
-  drag.ok = !collides(it.id, n.x, n.y, n.w, n.h);
   place(drag.ghost, n);
-  drag.ghost.classList.toggle('bad', !drag.ok);
+  // 놓일 자리가 바뀔 때마다 옆 상품들이 밀려날 모습을 미리 보여줌
+  const key = `${n.x},${n.y},${n.w},${n.h}`;
+  if (key !== drag.key) {
+    drag.key = key;
+    previewPush(pushLayout(it.id, n), el);
+  }
 
   // 화면 가장자리에서 자동 스크롤
   if (e.clientY > innerHeight - 50) scrollBy(0, 14);
@@ -269,7 +337,7 @@ grid.addEventListener('pointermove', (e) => {
 
 function endDrag(e, cancel = false) {
   if (!drag) return;
-  const { el, it, next, moved, ok, ghost } = drag;
+  const { el, it, next, moved, ghost } = drag;
   drag = null;
   ghost?.remove();
   el.classList.remove('active');
@@ -279,18 +347,11 @@ function endDrag(e, cancel = false) {
     return;
   }
   const changed = next.x !== it.x || next.y !== it.y || next.w !== it.w || next.h !== it.h;
-  if (cancel || !ok || !changed) {
+  if (cancel || !changed) {
     render();
     return;
   }
-  const prev = { x: it.x, y: it.y, w: it.w, h: it.h };
-  Object.assign(it, next);
-  render();
-  if (selected?.id === it.id) fillPanel();
-  run('저장 중…', () => api.update(it.id, next)).catch(() => {
-    Object.assign(it, prev);
-    render();
-  });
+  commitLayout(it, next);
 }
 grid.addEventListener('pointerup', (e) => endDrag(e));
 grid.addEventListener('pointercancel', (e) => endDrag(e, true));
@@ -570,15 +631,7 @@ form.addEventListener('change', async (e) => {
   if (el.name === 'w' || el.name === 'h') {
     const w = Math.min(COLS - it.x, Math.max(1, parseInt(form.elements.w.value, 10) || 1));
     const hh = Math.max(1, parseInt(form.elements.h.value, 10) || 1);
-    if (collides(it.id, it.x, it.y, w, hh)) {
-      status('그 크기로는 옆 상품과 겹칩니다', true);
-      fillPanel();
-      return;
-    }
-    await run('저장 중…', () => api.update(it.id, { w, h: hh }));
-    Object.assign(it, { w, h: hh });
-    render();
-    fillPanel();
+    await commitLayout(it, { x: it.x, y: it.y, w, h: hh });
     return;
   }
 
