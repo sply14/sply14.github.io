@@ -1,4 +1,4 @@
-import { h, fetchItems, formatPrice, safeUrl, look, MOBILE_COLS } from './common.js?v=1794841063';
+import { h, fetchItems, formatPrice, safeUrl, look, MOBILE_COLS } from './common.js?v=1794846011';
 
 const grid = document.getElementById('grid');
 const detail = document.getElementById('detail');
@@ -67,19 +67,37 @@ function setupPointer() {
     if (!hovered) return;
     hovered.style.removeProperty('--px');
     hovered.style.removeProperty('--py');
+    hovered.classList.remove('hot');
     hovered = null;
+    grid.classList.remove('focus');
     tag.classList.remove('on');
+  };
+
+  // 칸 가장자리(한 칸 크기의 EDGE 비율)에 있을 때는 아무것도 고르지 않은 상태로 둔다 → 상품 사이에서 전체가 보임
+  // 이미 고른 상품은 조금 더 바깥에서 놓아줘서 경계에서 깜빡이지 않게 한다
+  const EDGE = 0.14, KEEP = 0.08;
+  const inside = (el, e, ratio) => {
+    const r = el.getBoundingClientRect();
+    const m = (grid.clientWidth / (Number(getComputedStyle(grid).getPropertyValue('--cols')) || 10)) * ratio;
+    return e.clientX > r.left + m && e.clientX < r.right - m && e.clientY > r.top + m && e.clientY < r.bottom - m;
   };
 
   grid.addEventListener('pointermove', (e) => {
     if (e.pointerType !== 'mouse') return;
     tx = e.clientX;
     ty = e.clientY;
-    const el = e.target.closest('.item');
+    let el = null;
+    if (hovered && inside(hovered, e, KEEP)) el = hovered;
+    else {
+      el = document.elementsFromPoint(e.clientX, e.clientY)
+        .find((n) => n.classList.contains('item') && grid.contains(n) && inside(n, e, EDGE)) || null;
+    }
     if (el !== hovered) {
       leave();
       hovered = el;
       if (el) {
+        el.classList.add('hot');
+        grid.classList.add('focus');
         const it = items[el.dataset.i];
         const price = formatPrice(it);
         if (!tag.classList.contains('on')) { x = tx; y = ty; }
@@ -111,7 +129,7 @@ function setupCursor() {
     const slide = target?.closest?.('.slide');
     cur.classList.toggle('zoom', !!slide);
     cur.classList.toggle('out', !!slide?.classList.contains('zoom'));
-    cur.classList.toggle('hot', !slide && !!target?.closest?.('a, button, .item'));
+    cur.classList.toggle('hot', !slide && !!target?.closest?.('a, button:not(.item), .item.hot'));
   };
 
   addEventListener('pointermove', (e) => {
