@@ -105,13 +105,13 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   color: var(--tc, inherit);
   min-width: 0;
   padding: 0 calc(100cqw / var(--cols) * .1);
-  font-size: calc(100cqw / var(--cols) * .36 * var(--fit, 1));
+  font-size: calc(100cqw / var(--cols) * .36 * var(--fit, 1) * var(--auto, 1));
   font-weight: var(--fw, 700);
   font-style: var(--fi, normal);
   letter-spacing: var(--ls, -0.045em);
   line-height: .92;
-  white-space: pre-line;
-  overflow-wrap: anywhere;
+  /* 줄바꿈은 직접 넣은 곳에서만. 칸보다 크면 fitText()가 글자를 줄여 맞춤 */
+  white-space: pre;
 }
 /* 글자 세로 늘이기·기울이기 */
 .label .t, .tile .txt .t {
@@ -244,7 +244,7 @@ html.has-cur, html.has-cur * { cursor: none !important; }
     grid-row: span var(--mh);
   }
   /* 텍스트도 상품처럼 자기 칸 수만큼만 차지하고, 칸 대비 글자 크기는 PC와 같게 (5칸보다 넓던 텍스트는 줄어든 만큼 글자도 축소) */
-  .label { font-size: calc(100cqw / var(--cols) * .36 * var(--fit, 1) * var(--mk, 1)); }
+  .label { font-size: calc(100cqw / var(--cols) * .36 * var(--fit, 1) * var(--mk, 1) * var(--auto, 1)); }
 }
 
 /* ───────── 상세 팝업 ───────── */

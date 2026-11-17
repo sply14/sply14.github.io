@@ -45,7 +45,7 @@ export function safeUrl(u) {
 export async function loadLocal() {
   const raw = localStorage.getItem(LOCAL_KEY);
   if (raw) return JSON.parse(raw);
-  const { demoItems } = await import('./demo.js?v=1794881173');
+  const { demoItems } = await import('./demo.js?v=1794881493');
   const seed = demoItems();
   localStorage.setItem(LOCAL_KEY, JSON.stringify(seed));
   return seed;
@@ -68,6 +68,38 @@ export const FONTS = {
   serif: 'Serif — Instrument',
   mono: 'Mono — IBM Plex',
 };
+
+// 텍스트 블록이 칸 밖으로 넘치면 글자 크기를 줄여 칸 안에 맞춤 (기기마다 폰트 폭이 달라도 넘치지 않게)
+// 늘이기·기울이기로 커진 크기까지 계산에 넣음. 칸보다 작은 글자는 그대로 둠
+export function fitText(box) {
+  const t = box.querySelector('.t');
+  if (!t) return;
+  box.style.setProperty('--auto', 1);
+  const cs = getComputedStyle(box);
+  const availW = box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const availH = box.clientHeight * 0.96;
+  const sx = Number(cs.getPropertyValue('--sx')) || 1;
+  const sy = Number(cs.getPropertyValue('--sy')) || 1;
+  const sk = Math.abs(Number(cs.getPropertyValue('--sk')) || 0);
+  const h = t.scrollHeight * sy;
+  const w = t.scrollWidth * sx + Math.tan((sk * Math.PI) / 180) * h;
+  if (!w || !h || availW <= 0 || availH <= 0) return;
+  const k = Math.min(1, availW / w, availH / h);
+  if (k < 0.999) box.style.setProperty('--auto', k.toFixed(4));
+}
+
+// 화면 크기가 바뀌거나 웹폰트가 늦게 도착해도 다시 맞춤
+export function fitAll(root, selector) {
+  const run = () => root.querySelectorAll(selector).forEach(fitText);
+  run();
+  document.fonts?.ready.then(run);
+  let raf = 0;
+  new ResizeObserver(() => {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(run);
+  }).observe(root);
+  return run;
+}
 
 // 상품 사진의 확대·위치, 텍스트의 폰트·굵기·기울임 등을 요소에 적용 (카탈로그와 관리자 화면 공용)
 export function look(el, it) {

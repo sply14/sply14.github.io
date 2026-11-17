@@ -1,4 +1,4 @@
-import { look, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1794881173';
+import { look, fitText, fitAll, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1794881493';
 
 const $ = (s) => document.querySelector(s);
 const grid = $('#grid');
@@ -345,7 +345,7 @@ function render() {
     el.classList.toggle('selected', selected?.id === it.id);
     el.querySelector('.badge').textContent = `${it.w}×${it.h}`;
     if (it.kind === 'text') {
-      el.querySelector('.t').textContent = it.label || '';
+      el.querySelector('.t').textContent = (it.label || '').trimEnd();
     } else {
       const img = el.querySelector('img');
       const src = it.thumb_url || it.image_url;
@@ -354,6 +354,7 @@ function render() {
     }
     place(el, it);
     look(el, it);
+    if (it.kind === 'text') fitText(el.querySelector('.txt'));
   }
   for (const [id, el] of tiles) {
     if (alive.has(id)) continue;
@@ -770,11 +771,14 @@ form.addEventListener('input', (e) => {
   const name = e.target.name;
   if (name === 'scale') {
     tile.style.setProperty('--fit', e.target.value);
+    if (it.kind === 'text') fitText(tile.querySelector('.txt'));
     $('#p-crop').style.setProperty('--fit', e.target.value);
   } else if (name === 'label') {
-    tile.querySelector('.t').textContent = e.target.value;
+    tile.querySelector('.t').textContent = e.target.value.trimEnd();
+    fitText(tile.querySelector('.txt'));
   } else if (name.startsWith('st_')) {
     look(tile, { ...it, scale: form.elements.scale.value, style: { ...(it.style || {}), ...readTextStyle() } });
+    if (it.kind === 'text') fitText(tile.querySelector('.txt'));
   }
   syncOutputs();
 });
@@ -898,6 +902,7 @@ async function enter() {
   items = await api.list();
   order = readingOrder();
   render();
+  fitAll(grid, '.txt');
   syncPack();
   repack();
 }

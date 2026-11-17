@@ -1,4 +1,4 @@
-import { h, fetchItems, formatPrice, safeUrl, look, MOBILE_COLS } from './common.js?v=1794881173';
+import { h, fetchItems, formatPrice, safeUrl, look, fitAll, MOBILE_COLS } from './common.js?v=1794881493';
 
 const grid = document.getElementById('grid');
 const detail = document.getElementById('detail');
@@ -25,7 +25,7 @@ function renderGrid() {
       const pos = `--x:${it.x + 1};--y:${it.y + 1};--w:${it.w};--h:${it.h};--mw:${mw};--mh:${mh};--mk:${mw / it.w};--d:${Math.min(it.x + it.y, 24)};--fit:${Number(it.scale) || 1}`;
       if (it.kind === 'text') {
         // 모바일에서는 CSS가 텍스트를 한 줄 전체 폭으로 놓음
-        const label = h('div', { class: 'label', style: pos }, h('span', { class: 't', text: it.label || '' }));
+        const label = h('div', { class: 'label', style: pos }, h('span', { class: 't', text: (it.label || '').trimEnd() }));
         look(label, it);
         return label;
       }
@@ -436,6 +436,7 @@ try {
   all.sort((a, b) => a.y - b.y || a.x - b.x);
   items = all.filter((it) => it.kind !== 'text');
   renderGrid();
+  fitAll(grid, '.label');
   hideTag = setupPointer();
   setupCursor();
   const id = decodeURIComponent(location.hash.slice(1));
