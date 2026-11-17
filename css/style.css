@@ -184,13 +184,13 @@ html.has-cur, html.has-cur * { cursor: none !important; }
 /* 상세 사진의 좌우 구역: 화살표로 바뀜 */
 .cur b {
   position: absolute;
-  left: -18px;
-  top: -18px;
-  width: 37px;
-  height: 37px;
+  left: -36px;
+  top: -36px;
+  width: 73px;
+  height: 73px;
   display: grid;
   place-items: center;
-  font-size: 17px;
+  font-size: 38px;
   font-weight: 400;
   line-height: 1;
   opacity: 0;
@@ -200,9 +200,9 @@ html.has-cur, html.has-cur * { cursor: none !important; }
 .cur.prev b::before { content: "←"; }
 .cur.next b::before { content: "→"; }
 .cur.prev::before, .cur.prev::after, .cur.next::before, .cur.next::after { transform: scale(0); }
-.cur.prev i, .cur.next i { transform: scale(1.5); }
-.cur.down.prev b { transform: translateX(-5px); }
-.cur.down.next b { transform: translateX(5px); }
+.cur.prev i, .cur.next i { transform: scale(2.1); }
+.cur.down.prev b { transform: translateX(-8px); }
+.cur.down.next b { transform: translateX(8px); }
 .cur.down.zoom i { transform: scale(1.2); }
 ::view-transition-group(cursor) { animation: none; z-index: 10; }
 ::view-transition-old(cursor) { display: none; }
@@ -214,10 +214,10 @@ html.has-cur, html.has-cur * { cursor: none !important; }
   left: 0;
   top: 0;
   z-index: 40;
-  padding: 6px 8px 5px;
+  padding: 10px 13px 9px;
   background: var(--ink);
   color: var(--paper);
-  font-size: 11px;
+  font-size: 16px;
   font-weight: 700;
   line-height: 1;
   letter-spacing: .01em;
@@ -237,14 +237,14 @@ html.has-cur, html.has-cur * { cursor: none !important; }
 
 @media (max-width: 767px) {
   :root { --cols: 5; --pad: 3vw; }
-  /* 순서를 그대로 지켜 차례로 놓음 (빈칸 메우기를 하면 제목과 상품 순서가 뒤섞임) */
-  .grid { grid-auto-rows: minmax(calc(100cqw / var(--cols)), auto); }
+  /* 관리자의 '빈칸 없이 채우기'와 같은 규칙: 순서대로, 들어갈 수 있는 가장 앞자리에 */
+  .grid { grid-auto-rows: minmax(calc(100cqw / var(--cols)), auto); grid-auto-flow: dense; }
   .item, .label {
     grid-column: span var(--mw);
     grid-row: span var(--mh);
   }
-  /* 텍스트는 한 줄을 통째로 쓰고, 길면 줄 높이가 늘어나 아래 사진과 겹치지 않음 */
-  .label { grid-column: 1 / -1; padding-block: calc(100cqw / var(--cols) * .12); }
+  /* 텍스트도 상품처럼 자기 칸 수만큼만 차지하고, 칸 대비 글자 크기는 PC와 같게 (5칸보다 넓던 텍스트는 줄어든 만큼 글자도 축소) */
+  .label { font-size: calc(100cqw / var(--cols) * .36 * var(--fit, 1) * var(--mk, 1)); }
 }
 
 /* ───────── 상세 팝업 ───────── */
@@ -308,11 +308,27 @@ html.has-cur, html.has-cur * { cursor: none !important; }
 .sold-mark { color: var(--accent); }
 
 /* 이미지 갤러리: 가로 스냅 스크롤 (모바일 스와이프 / PC 썸네일) */
+.stage { position: relative; flex: 1; min-height: 0; margin: 20px -28px; display: flex; }
+/* 사진 양옆의 넘기기 화살표 */
+.gnav {
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  width: 56px;
+  height: 72px;
+  font-size: 26px;
+  line-height: 1;
+  transition: translate .25s var(--ease), color .15s;
+}
+.gnav.prev { left: 4px; }
+.gnav.next { right: 4px; }
+.gnav.prev:hover, .gnav.prev:active { translate: -4px -50%; color: var(--accent); }
+.gnav.next:hover, .gnav.next:active { translate: 4px -50%; color: var(--accent); }
 .gallery {
   position: relative;
   flex: 1;
+  min-width: 0;
   min-height: 0;
-  margin: 20px -28px;
   display: flex;
   overflow-x: auto;
   overflow-y: hidden;
@@ -441,9 +457,10 @@ html.has-cur, html.has-cur * { cursor: none !important; }
   }
   .page { padding: 18px; }
   .page.spec { border-left: 0; border-top: 1px solid var(--ink); overflow: visible; }
-  .gallery { height: 78vw; flex: none; margin: 14px -18px; }
-  /* 사진이 여러 장이면 다음 사진이 살짝 보여서 옆으로 넘길 수 있음을 알 수 있게 */
-  .gallery:has(.slide + .slide) .slide { flex-basis: 84%; padding: 0 5%; }
+  .stage { height: 78vw; flex: none; margin: 14px -18px; }
+  .gnav { width: 48px; font-size: 22px; }
+  .gnav.prev { left: 0; }
+  .gnav.next { right: 0; }
   .thumbs { justify-content: center; min-height: 0; margin: 0; gap: 5px; }
   .thumbs:empty { display: none; }
   /* 모바일에서는 썸네일 대신 점 표시 */

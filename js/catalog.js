@@ -1,4 +1,4 @@
-import { h, fetchItems, formatPrice, safeUrl, look, MOBILE_COLS } from './common.js?v=1794860033';
+import { h, fetchItems, formatPrice, safeUrl, look, MOBILE_COLS } from './common.js?v=1794881173';
 
 const grid = document.getElementById('grid');
 const detail = document.getElementById('detail');
@@ -22,7 +22,7 @@ function renderGrid() {
     ...all.map((it) => {
       const mw = Math.min(it.w, MOBILE_COLS);
       const mh = Math.max(1, Math.round((it.h * mw) / it.w));
-      const pos = `--x:${it.x + 1};--y:${it.y + 1};--w:${it.w};--h:${it.h};--mw:${mw};--mh:${mh};--d:${Math.min(it.x + it.y, 24)};--fit:${Number(it.scale) || 1}`;
+      const pos = `--x:${it.x + 1};--y:${it.y + 1};--w:${it.w};--h:${it.h};--mw:${mw};--mh:${mh};--mk:${mw / it.w};--d:${Math.min(it.x + it.y, 24)};--fit:${Number(it.scale) || 1}`;
       if (it.kind === 'text') {
         // 모바일에서는 CSS가 텍스트를 한 줄 전체 폭으로 놓음
         const label = h('div', { class: 'label', style: pos }, h('span', { class: 't', text: it.label || '' }));
@@ -217,8 +217,15 @@ function renderDetail(dir = 0) {
   };
   photos = { index, go, zone, count: slides.length };
 
+  // 눈에 보이는 좌우 화살표 (넘길 사진이 있는 쪽만 표시)
+  const prevBtn = h('button', { type: 'button', class: 'gnav prev', 'aria-label': 'Previous image', text: '←', hidden: true, onclick: () => go(index() - 1) });
+  const nextBtn = h('button', { type: 'button', class: 'gnav next', 'aria-label': 'Next image', text: '→', hidden: slides.length < 2, onclick: () => go(index() + 1) });
+  const stage = h('div', { class: 'stage' }, gallery, prevBtn, nextBtn);
+
   gallery.addEventListener('scroll', () => {
     const idx = index();
+    prevBtn.hidden = idx === 0;
+    nextBtn.hidden = idx >= slides.length - 1;
     dots.forEach((d, i) => d.setAttribute('aria-current', String(i === idx)));
     if (images.length > 1) count.textContent = `${idx + 1} / ${images.length}`;
   }, { passive: true });
@@ -251,7 +258,7 @@ function renderDetail(dir = 0) {
       'section',
       { class: 'page plate' },
       h('div', { class: 'run' }, h('span', { text: it.code || '' }), h('span', { class: 'sold-mark', text: it.sold ? 'Sold' : '' })),
-      gallery,
+      stage,
       thumbs,
       h('div', { class: 'run' }, h('span', { text: pad2(current + 1) }), count),
     ),

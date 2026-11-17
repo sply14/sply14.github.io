@@ -1,4 +1,4 @@
-import { look, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1794860033';
+import { look, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1794881173';
 
 const $ = (s) => document.querySelector(s);
 const grid = $('#grid');
