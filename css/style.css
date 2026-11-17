@@ -267,7 +267,11 @@ html.has-cur, html.has-cur * { cursor: none !important; }
   min-height: 0;
   background: var(--paper);
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* 세로로 긴 사진이면 JS가 --plate-w를 정해 사진 칸과 팝업 전체 폭을 줄임 */
+  grid-template-columns: var(--plate-w, 1fr) 1fr;
+  max-width: calc(var(--plate-w, 50%) + 50%);
+  margin: 0 auto;
+  transition: max-width .45s var(--ease);
 }
 
 .page {
@@ -277,7 +281,8 @@ html.has-cur, html.has-cur * { cursor: none !important; }
   display: flex;
   flex-direction: column;
 }
-.page.spec { border-left: 1px solid var(--ink); overflow-y: auto; }
+.page.spec { border-left: 1px solid var(--ink); }
+.spec .body { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -28px; padding: 0 28px 28px; }
 
 .run {
   display: flex;
@@ -412,8 +417,9 @@ html.has-cur, html.has-cur * { cursor: none !important; }
 
 .spec .buy {
   position: relative;
+  flex: none;
   overflow: hidden;
-  margin-top: 20px;
+  margin: 0 0 22px;
   padding: 16px 16px 15px;
   background: var(--ink);
   color: var(--paper);
@@ -440,7 +446,6 @@ html.has-cur, html.has-cur * { cursor: none !important; }
 .spec .buy:hover::before, .spec .buy:active::before { transform: scaleX(1); }
 .spec .buy:hover span:last-child { transform: translateX(5px); }
 
-.spec .grow { flex: 1; min-height: 28px; }
 
 /* 그리드 사진 → 상세 사진으로 이어지는 전환 */
 ::view-transition-group(hero) { animation-duration: .5s; animation-timing-function: var(--ease); }
@@ -451,12 +456,25 @@ html.has-cur, html.has-cur * { cursor: none !important; }
   .detail { padding: 0; }
   .sheet {
     display: block;
+    max-width: none;
     overflow-y: auto;
     overscroll-behavior: contain;
     padding-bottom: 64px;
   }
+  .sheet.has-buy { padding-bottom: 120px; }
   .page { padding: 18px; }
   .page.spec { border-left: 0; border-top: 1px solid var(--ink); overflow: visible; }
+  .spec .body { overflow: visible; margin: 0; padding: 0; }
+  /* Order 버튼은 하단 내비게이션 바로 위에 항상 떠 있음 */
+  .spec .buy {
+    position: fixed;
+    left: 0; right: 0;
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+    z-index: 2;
+    margin: 0;
+    padding: 18px 22px 17px;
+    font-size: 12px;
+  }
   .stage { height: 78vw; flex: none; margin: 14px -18px; }
   .gnav { width: 48px; font-size: 22px; }
   .gnav.prev { left: 0; }
@@ -472,7 +490,6 @@ html.has-cur, html.has-cur * { cursor: none !important; }
   .spec .run:first-child { position: fixed; top: 18px; right: 18px; z-index: 2; }
   .spec h1 { margin-top: 26px; font-size: 34px; }
   .spec dl { margin-top: 26px; }
-  .spec .grow { display: none; }
   /* 하단 고정 내비게이션 */
   .spec .run:last-child {
     position: fixed;
@@ -486,6 +503,16 @@ html.has-cur, html.has-cur * { cursor: none !important; }
   .run .nav { gap: 34px; }
   .run .nav button { font-size: 18px; }
 }
+
+/* 스크롤바: 마우스가 올라간 영역의 가장자리에만 얇은 검정 막대 */
+@supports (scrollbar-color: auto) {
+  * { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+  :hover { scrollbar-color: var(--ink) transparent; }
+}
+::-webkit-scrollbar { width: 5px; height: 5px; background: transparent; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background: transparent; border-radius: 0; }
+:hover::-webkit-scrollbar-thumb { background: var(--ink); }
 
 @media (prefers-reduced-motion: reduce) {
   *, ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) {

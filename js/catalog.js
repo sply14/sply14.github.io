@@ -1,4 +1,4 @@
-import { h, fetchItems, formatPrice, safeUrl, look, fitAll, MOBILE_COLS } from './common.js?v=1794881493';
+import { h, fetchItems, formatPrice, safeUrl, look, fitAll, MOBILE_COLS } from './common.js?v=1794897448';
 
 const grid = document.getElementById('grid');
 const detail = document.getElementById('detail');
@@ -162,8 +162,9 @@ function row(label, value, i, cls = '') {
 
 function renderDetail(dir = 0) {
   const it = items[current];
-  const images = [it.image_url, ...(Array.isArray(it.detail_urls) ? it.detail_urls : [])].filter(Boolean);
-  if (!images.length && it.thumb_url) images.push(it.thumb_url);
+  // 상세 사진이 있으면 상세 사진만 (첫 장부터), 없을 때만 그리드의 대표 사진
+  const details = (Array.isArray(it.detail_urls) ? it.detail_urls : []).filter(Boolean);
+  const images = details.length ? details : [it.image_url || it.thumb_url].filter(Boolean);
   const buy = safeUrl(it.buy_url);
 
   const slides = images.map((src, i) =>
@@ -248,6 +249,27 @@ function renderDetail(dir = 0) {
     slide.addEventListener('pointerleave', () => slide.classList.remove('zoom'));
   });
 
+  // PC: 사진 위에서 마우스 휠을 굴리면 사진이 넘어감 (휠 한 칸 = 한 장)
+  let wheelAcc = 0, wheelAt = 0, wheelIdx = null, wheelIdle;
+  stage.addEventListener('wheel', (e) => {
+    if (slides.length < 2) return;
+    e.preventDefault();
+    const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    const unit = e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 800 : 1;
+    wheelAcc += d * unit;
+    clearTimeout(wheelIdle);
+    wheelIdle = setTimeout(() => { wheelAcc = 0; wheelIdx = null; }, 260);
+    const now = performance.now();
+    if (Math.abs(wheelAcc) < 50 || now - wheelAt < 110) return;
+    const from = wheelIdx ?? index();
+    const to = Math.max(0, Math.min(slides.length - 1, from + Math.sign(wheelAcc)));
+    wheelAcc = 0;
+    wheelAt = now;
+    if (to === from) return;
+    wheelIdx = to;
+    go(to);
+  }, { passive: false });
+
   const closeBtn = h('button', { type: 'button', text: 'Close ×', onclick: close });
   let n = 0;
 
@@ -266,18 +288,22 @@ function renderDetail(dir = 0) {
       'section',
       { class: 'page spec' },
       h('div', { class: 'run' }, h('span', {}), closeBtn),
-      h('h1', { class: 'rise', style: `--i:${n++}`, text: it.name || it.code || '' }),
+      // 본문만 스크롤되고 Order 버튼과 하단 내비게이션은 항상 보임
       h(
-        'dl',
-        {},
-        row('Price', formatPrice(it), n++, 'price'),
-        row('Size', it.size, n++),
-        row('Material', it.material, n++),
-        row('Note', it.description, n++),
+        'div',
+        { class: 'body' },
+        h('h1', { class: 'rise', style: `--i:${n++}`, text: it.name || it.code || '' }),
+        h(
+          'dl',
+          {},
+          row('Price', formatPrice(it), n++, 'price'),
+          row('Size', it.size, n++),
+          row('Material', it.material, n++),
+          row('Note', it.description, n++),
+        ),
       ),
       buy && !it.sold &&
         h('a', { class: 'buy rise', style: `--i:${n++}`, href: buy, target: '_blank', rel: 'noopener' }, h('span', { text: 'Order' }), h('span', { text: '→' })),
-      h('div', { class: 'grow' }),
       h(
         'div',
         { class: 'run' },
@@ -293,10 +319,47 @@ function renderDetail(dir = 0) {
   );
 
   detail.replaceChildren(sheet);
+  sheet.classList.toggle('has-buy', !!(buy && !it.sold));
+  fitSheet(sheet, slides);
   setupSwipe(sheet, gallery, images.length);
   closeBtn.focus({ preventScroll: true });
   return slides[0]?.firstChild;
 }
+
+/* 세로로 긴 사진이면 사진 칸(PC)을 좁혀 팝업 폭을 줄이고, 모바일은 사진 칸을 더 높게 → 사진 양옆 여백이 과하지 않게 */
+let fitSheetNow = null;
+function fitSheet(sheet, slides) {
+  const imgs = slides.map((s) => s.firstChild);
+  const apply = () => {
+    if (!sheet.isConnected) return;
+    // 불러온 사진 중 가장 가로로 넓은 비율 기준 (그 사진도 잘리지 않게)
+    const ratios = imgs.filter((im) => im.naturalWidth).map((im) => im.naturalWidth / im.naturalHeight);
+    const r = ratios.length ? Math.max(...ratios) : 1;
+    const stage = sheet.querySelector('.stage');
+    if (matchMedia('(max-width: 767px)').matches) {
+      sheet.style.removeProperty('--plate-w');
+      // 사진 폭(82%)에 맞는 높이, 화면 높이의 72%까지
+      if (r < 0.95) stage.style.height = `${Math.min((innerWidth * 0.82) / r, innerHeight * 0.72)}px`;
+      else stage.style.height = '';
+      return;
+    }
+    stage.style.height = '';
+    const half = sheet.parentElement.clientWidth / 2;
+    if (r >= 0.95) {
+      sheet.style.removeProperty('--plate-w');
+      return;
+    }
+    // 사진이 높이에 꽉 찰 때의 폭 + 좌우 여백(18%) — 반 화면보다 넓어지지 않게
+    const need = (stage.clientHeight * r) / 0.82;
+    const w = Math.round(Math.min(half, Math.max(320, need)));
+    if (w < half - 4) sheet.style.setProperty('--plate-w', `${w}px`);
+    else sheet.style.removeProperty('--plate-w');
+  };
+  imgs.forEach((im) => !im.complete && im.addEventListener('load', apply, { once: true }));
+  apply();
+  fitSheetNow = apply;
+}
+addEventListener('resize', () => fitSheetNow?.());
 
 /* 모바일 제스처: 아래로 끌어 닫기, 사진이 한 장이면 좌우로 밀어 이전/다음 상품 */
 function setupSwipe(sheet, gallery, imageCount) {

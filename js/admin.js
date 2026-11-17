@@ -1,4 +1,4 @@
-import { look, fitText, fitAll, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1794881493';
+import { look, fitText, fitAll, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1794897448';
 
 const $ = (s) => document.querySelector(s);
 const grid = $('#grid');
@@ -16,6 +16,8 @@ let fileTarget = null; // 파일 선택 창의 용도: {kind:'new', cell} | {kin
 const PACK_KEY = 'catalog-auto-pack';
 let autoPack = localStorage.getItem(PACK_KEY) !== 'off';
 let order = [];        // 채우기 순서 (상품 id)
+let hiddenItems = [];  // 숨긴 상품 (사이트에 안 보이고 그리드 칸도 차지하지 않음, 복구 가능)
+const picked = new Set(); // 여러 개 선택된 상품 id
 
 /* ───────── 데이터 계층 ───────── */
 
@@ -60,6 +62,17 @@ async function remoteApi() {
     async remove(id) {
       ok(await sb.from(TABLE).delete().eq('id', id));
     },
+    async removeMany(ids) {
+      ok(await sb.from(TABLE).delete().in('id', ids));
+    },
+    async hide(ids) {
+      const rows = ok(await sb.from(TABLE).update({ hidden: true, updated_at: new Date().toISOString() }).in('id', ids).select('id'));
+      if (rows.length !== ids.length) throw new Error('일부 상품을 숨기지 못했습니다');
+    },
+    // 숨긴 상품을 새 자리와 함께 다시 보이게
+    async restore(rows) {
+      await Promise.all(rows.map(({ id, ...pos }) => this.update(id, { ...pos, hidden: false })));
+    },
     async upload(blob) {
       const ext = (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
       const path = `${crypto.randomUUID()}.${ext}`;
@@ -95,6 +108,12 @@ async function localApi() {
       save();
     },
     async remove(id) { data = data.filter((d) => d.id !== id); save(); },
+    async removeMany(ids) { data = data.filter((d) => !ids.includes(d.id)); save(); },
+    async hide(ids) { data.filter((d) => ids.includes(d.id)).forEach((d) => (d.hidden = true)); save(); },
+    async restore(rows) {
+      for (const { id, ...pos } of rows) Object.assign(data.find((d) => d.id === id), pos, { hidden: false });
+      save();
+    },
     upload(blob) {
       return new Promise((res, rej) => {
         const r = new FileReader();
@@ -141,10 +160,13 @@ function firstFree(w, hh) {
 
 // 한 상품을 box 자리로 옮기거나 키웠을 때 나머지의 새 자리를 계산:
 // 겹치는 상품은 읽는 순서(왼→오, 위→아래)대로 옆으로 밀려나고, 줄 끝에 닿으면 다음 줄 처음으로 넘어감
-function pushLayout(id, box) {
-  const placed = [box];
+const pushLayout = (id, box) => pushLayoutMany(new Map([[id, box]]));
+
+// 여러 상품(boxes: id → 새 자리)을 한꺼번에 옮겼을 때
+function pushLayoutMany(boxes) {
+  const placed = [...boxes.values()];
   const moved = new Map();
-  const others = items.filter((o) => o.id !== id).sort((a, b) => a.y - b.y || a.x - b.x);
+  const others = items.filter((o) => !boxes.has(o.id)).sort((a, b) => a.y - b.y || a.x - b.x);
   for (const o of others) {
     const p = { x: o.x, y: o.y, w: o.w, h: o.h };
     while (placed.some((q) => overlap(p, q))) {
@@ -227,6 +249,33 @@ function plan(it, box, mode, cell) {
   return { map: packed(seq, { [it.id]: { w: box.w, h: box.h } }), order: seq };
 }
 
+// 선택한 여러 상품을 한 묶음으로 끌었을 때 (fdx, fdy = 끈 거리, 칸 단위)
+function planGroup(group, fdx, fdy, cell) {
+  const ids = new Set(group.map((g) => g.id));
+  if (autoPack) {
+    // 채우기 모드: 묶음을 순서 그대로 놓은 칸의 상품 앞(뒤로 옮길 땐 뒤)에 끼워 넣음
+    const t = itemAt(cell);
+    if (t && ids.has(t.id)) return { map: packed(), order: null };
+    const rest = order.filter((id) => !ids.has(id));
+    const g = order.filter((id) => ids.has(id));
+    let at;
+    if (t) at = rest.indexOf(t.id) + (order.indexOf(t.id) > order.indexOf(g[0]) ? 1 : 0);
+    else at = indexForCell(cell, rest);
+    const seq = [...rest.slice(0, at), ...g, ...rest.slice(at)];
+    return { map: packed(seq), order: seq };
+  }
+  // 자유 배치: 묶음 모양 그대로 평행 이동, 겹치는 상품은 밀려남
+  const minX = Math.min(...group.map((o) => o.x));
+  const maxX = Math.max(...group.map((o) => o.x + o.w));
+  const minY = Math.min(...group.map((o) => o.y));
+  const ddx = Math.max(-minX, Math.min(COLS - maxX, Math.round(fdx)));
+  const ddy = Math.max(-minY, Math.round(fdy));
+  const boxes = new Map(group.map((o) => [o.id, { x: o.x + ddx, y: o.y + ddy, w: o.w, h: o.h }]));
+  const map = pushLayoutMany(boxes);
+  boxes.forEach((b, id) => map.set(id, b));
+  return { map, order: null };
+}
+
 // 계산된 배치를 확정하고 저장. 실패하면 되돌림
 function commitChanges(map, newOrder) {
   const changes = [...map]
@@ -255,7 +304,7 @@ const repack = () => (autoPack ? commitChanges(packed()) : Promise.resolve());
 
 // 밀려날 상품들을 예상 자리로 미끄러지듯 옮겨 보여줌 (저장 전 미리보기)
 function previewPush(moved, skip) {
-  const others = items.map((o) => [o, tiles.get(o.id)]).filter(([, t]) => t && t !== skip);
+  const others = items.map((o) => [o, tiles.get(o.id)]).filter(([, t]) => t && !skip.has(t));
   const from = new Map(others.map(([, t]) => [t, t.getBoundingClientRect()]));
   let bottom = 0;
   for (const [o, t] of others) {
@@ -361,6 +410,81 @@ function render() {
     el.remove();
     tiles.delete(id);
   }
+  syncPicks();
+}
+
+/* ───────── 여러 개 선택 ───────── */
+
+const multiBar = $('#multi');
+function syncPicks() {
+  for (const id of picked) if (!tiles.has(id)) picked.delete(id);
+  for (const [id, el] of tiles) el.classList.toggle('picked', picked.has(id));
+  multiBar.hidden = !picked.size;
+  $('#m-count').textContent = `${picked.size}개 선택`;
+}
+const pickedItems = () => items.filter((i) => picked.has(i.id));
+function clearPicks() {
+  picked.clear();
+  syncPicks();
+}
+// Shift·⌘·Ctrl + 클릭: 하나씩 선택에 넣거나 빼기
+function togglePick(it) {
+  if (selected && selected.id !== it.id) picked.add(selected.id);
+  select(null);
+  if (picked.has(it.id)) picked.delete(it.id);
+  else picked.add(it.id);
+  syncPicks();
+}
+
+// 빈 곳에서 끌면 사각형 안에 걸친 상품을 모두 선택
+let marquee = null;
+function startMarquee(e) {
+  e.preventDefault();
+  commitPendingEdit();
+  const r = grid.getBoundingClientRect();
+  marquee = {
+    x0: e.clientX - r.left,
+    y0: e.clientY - r.top,
+    base: e.shiftKey || e.metaKey || e.ctrlKey ? new Set(picked) : new Set(),
+    el: null,
+  };
+  grid.setPointerCapture(e.pointerId);
+}
+function moveMarquee(e) {
+  const r = grid.getBoundingClientRect();
+  const x1 = e.clientX - r.left;
+  const y1 = e.clientY - r.top;
+  if (!marquee.el) {
+    if (Math.hypot(x1 - marquee.x0, y1 - marquee.y0) < 5) return;
+    marquee.el = h('div', { class: 'marquee' });
+    grid.append(marquee.el);
+    select(null);
+  }
+  const L = Math.max(0, Math.min(marquee.x0, x1));
+  const T = Math.max(0, Math.min(marquee.y0, y1));
+  const R = Math.min(grid.clientWidth, Math.max(marquee.x0, x1));
+  const B = Math.min(grid.clientHeight, Math.max(marquee.y0, y1));
+  Object.assign(marquee.el.style, { left: `${L}px`, top: `${T}px`, width: `${R - L}px`, height: `${B - T}px` });
+  picked.clear();
+  marquee.base.forEach((id) => picked.add(id));
+  for (const [id, t] of tiles) {
+    const b = t.getBoundingClientRect();
+    if (b.left < r.left + R && b.right > r.left + L && b.top < r.top + B && b.bottom > r.top + T) picked.add(id);
+  }
+  syncPicks();
+  if (e.clientY > innerHeight - 50) scrollBy(0, 14);
+  else if (e.clientY < 90) scrollBy(0, -14);
+}
+function endMarquee() {
+  if (!marquee) return false;
+  if (marquee.el) marquee.el.remove();
+  else {
+    // 빈 곳을 그냥 클릭: 선택 해제
+    clearPicks();
+    select(null);
+  }
+  marquee = null;
+  return true;
 }
 
 /* ───────── 드래그: 이동 / 크기 조절 ───────── */
@@ -368,18 +492,28 @@ function render() {
 let drag = null;
 
 grid.addEventListener('pointerdown', (e) => {
-  if (e.button !== 0) return;
+  if (e.button !== 0 || drag || marquee) return;
   const el = e.target.closest('.tile');
-  if (!el) return;
+  if (!el) {
+    if (e.pointerType !== 'touch') startMarquee(e);
+    return;
+  }
   const it = items.find((i) => String(i.id) === el.dataset.id);
   if (!it) return;
   commitPendingEdit();
   e.preventDefault();
+  if (e.shiftKey || e.metaKey || e.ctrlKey) {
+    togglePick(it);
+    return;
+  }
+  const handle = e.target.closest('.handle');
+  // 선택된 묶음 중 하나를 잡으면 묶음 전체를 옮김
+  const group = !handle && picked.has(it.id) && picked.size > 1 ? pickedItems() : null;
   el.setPointerCapture(e.pointerId);
   drag = {
-    el, it,
-    mode: e.target.closest('.handle') ? 'resize' : 'move',
-    dir: e.target.closest('.handle')?.dataset.dir || '',
+    el, it, group,
+    mode: group ? 'group' : handle ? 'resize' : 'move',
+    dir: handle?.dataset.dir || '',
     sx: e.clientX, sy: e.clientY, scrollY,
     next: { x: it.x, y: it.y, w: it.w, h: it.h },
     moved: false, ghost: null, key: '', plan: null,
@@ -387,6 +521,7 @@ grid.addEventListener('pointerdown', (e) => {
 });
 
 grid.addEventListener('pointermove', (e) => {
+  if (marquee) return moveMarquee(e);
   if (!drag) return;
   const { el, it, mode } = drag;
   const dx = e.clientX - drag.sx;
@@ -394,15 +529,41 @@ grid.addEventListener('pointermove', (e) => {
   if (!drag.moved) {
     if (Math.hypot(dx, dy) < 5) return;
     drag.moved = true;
+    if (!drag.group && !picked.has(it.id)) clearPicks();
     // 끄는 동안 타일이 쪼그라들지 않도록 현재 크기를 고정
-    el.style.width = `${it.w * cellSize()}px`;
-    el.style.height = `${it.h * cellSize()}px`;
-    el.classList.add('active');
-    drag.ghost = h('div', { class: 'ghost' });
-    grid.append(drag.ghost);
+    drag.list = drag.group || [it];
+    drag.tiles = drag.list.map(tileOf);
+    drag.ghosts = drag.list.map(() => grid.appendChild(h('div', { class: 'ghost' })));
+    drag.list.forEach((o, i) => {
+      const t = drag.tiles[i];
+      t.style.width = `${o.w * cellSize()}px`;
+      t.style.height = `${o.h * cellSize()}px`;
+      t.classList.add('active');
+    });
+    drag.ghost = drag.ghosts[0];
   }
   const c = cellSize();
   const n = drag.next;
+  if (mode === 'group') {
+    drag.tiles.forEach((t) => (t.style.transform = `translate(${dx}px, ${dy}px)`));
+    const cell = cellAt(e.clientX, e.clientY);
+    const key = autoPack ? `c${cell.x},${cell.y}` : `${Math.round(dx / c)},${Math.round(dy / c)}`;
+    if (key !== drag.key) {
+      drag.key = key;
+      drag.plan = planGroup(drag.group, dx / c, dy / c, cell);
+      let bottom = 0;
+      drag.group.forEach((o, i) => {
+        const p = { ...o, ...drag.plan.map.get(o.id) };
+        bottom = Math.max(bottom, p.y + p.h);
+        place(drag.ghosts[i], p);
+      });
+      if (bottom + 1 > rows) setRows(bottom + 2);
+      previewPush(drag.plan.map, new Set(drag.tiles));
+    }
+    if (e.clientY > innerHeight - 50) scrollBy(0, 14);
+    else if (e.clientY < 90) scrollBy(0, -14);
+    return;
+  }
   if (mode === 'move') {
     n.x = Math.min(COLS - it.w, Math.max(0, Math.round(it.x + dx / c)));
     n.y = Math.max(0, Math.round(it.y + dy / c));
@@ -448,7 +609,7 @@ grid.addEventListener('pointermove', (e) => {
     const self = { ...n, ...drag.plan.map.get(it.id) };
     if (self.y + self.h + 1 > rows) setRows(self.y + self.h + 2);
     place(drag.ghost, self);
-    previewPush(drag.plan.map, el);
+    previewPush(drag.plan.map, new Set([el]));
   }
 
   // 화면 가장자리에서 자동 스크롤
@@ -457,12 +618,15 @@ grid.addEventListener('pointermove', (e) => {
 });
 
 function endDrag(e, cancel = false) {
+  if (endMarquee()) return;
   if (!drag) return;
-  const { el, it, moved, ghost, plan: planned } = drag;
+  const { el, it, moved, plan: planned } = drag;
+  drag.ghosts?.forEach((g) => g.remove());
+  for (const t of drag.tiles || [el]) {
+    t.classList.remove('active');
+    t.style.transform = t.style.width = t.style.height = '';
+  }
   drag = null;
-  ghost?.remove();
-  el.classList.remove('active');
-  el.style.transform = el.style.width = el.style.height = '';
   if (!moved) {
     if (!cancel) select(it);
     return;
@@ -548,9 +712,17 @@ async function replaceMain(file) {
 
 async function addDetails(files) {
   const it = selected;
+  // 폴더에서 여러 장을 끌어와도 파일 이름 순서(1, 2, … 10)대로 등록
+  files = [...files]
+    .filter((f) => f.type.startsWith('image/'))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  if (!it || !files.length) return;
   await run('업로드 중…', async () => {
     const urls = [];
-    for (const f of files) urls.push(await api.upload((await prepare(f)).full));
+    for (const [i, f] of files.entries()) {
+      status(`상세 사진 업로드 중… ${i + 1}/${files.length}`);
+      urls.push(await api.upload((await prepare(f)).full));
+    }
     const detail_urls = [...(it.detail_urls || []), ...urls];
     await api.update(it.id, { detail_urls }).catch((err) => {
       api.removeFiles(urls);
@@ -637,6 +809,22 @@ grid.addEventListener('drop', (e) => {
   clearDrop();
   if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files, cell);
 });
+// 편집 패널에 사진 파일을 끌어다 놓으면 상세 사진으로 한꺼번에 추가
+panel.addEventListener('dragover', (e) => {
+  if (![...e.dataTransfer.types].includes('Files') || !selected || selected.kind === 'text') return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'copy';
+  panel.classList.add('dropping');
+});
+panel.addEventListener('dragleave', (e) => {
+  if (!panel.contains(e.relatedTarget)) panel.classList.remove('dropping');
+});
+panel.addEventListener('drop', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  panel.classList.remove('dropping');
+  if (selected && selected.kind !== 'text' && e.dataTransfer.files.length) addDetails(e.dataTransfer.files);
+});
 addEventListener('dragover', (e) => e.preventDefault());
 addEventListener('drop', (e) => e.preventDefault());
 
@@ -650,6 +838,7 @@ function commitPendingEdit() {
 
 function select(it) {
   commitPendingEdit();
+  if (it && picked.size) clearPicks();
   selected = it;
   for (const [id, el] of tiles) el.classList.toggle('selected', !!it && id === it.id);
   panel.hidden = !it;
@@ -857,26 +1046,149 @@ form.addEventListener('input', (e) => {
 $('#p-replace').addEventListener('click', () => pick({ kind: 'main' }, false));
 $('#p-close').addEventListener('click', () => select(null));
 
-async function removeSelected() {
-  const it = selected;
-  if (!it || !confirm(`"${it.label || it.name || it.code || '이 상품'}"을(를) 삭제할까요? 되돌릴 수 없습니다.`)) return;
-  await run('삭제 중…', () => api.remove(it.id));
-  api.removeFiles([it.image_url, it.thumb_url, ...(it.detail_urls || [])]);
-  items = items.filter((i) => i.id !== it.id);
-  order = order.filter((id) => id !== it.id);
+/* ───────── 삭제 · 숨기기 · 복구 ───────── */
+
+const nameOf = (it) => (it.kind === 'text' ? it.label?.trim() : it.name || it.code) || (it.kind === 'text' ? '텍스트' : '이름 없는 상품');
+
+async function deleteItems(list) {
+  if (!list.length) return;
+  const what = list.length === 1 ? `"${nameOf(list[0])}"을(를)` : `${list.length}개를`;
+  if (!confirm(`${what} 삭제할까요? 되돌릴 수 없습니다.\n(나중에 다시 쓸 거라면 '숨기기'를 쓰세요)`)) return;
+  const ids = new Set(list.map((i) => i.id));
+  try {
+    await run('삭제 중…', () => api.removeMany([...ids]));
+  } catch {
+    return;
+  }
+  api.removeFiles(list.flatMap((it) => [it.image_url, it.thumb_url, ...(it.detail_urls || [])]));
+  items = items.filter((i) => !ids.has(i.id));
+  hiddenItems = hiddenItems.filter((i) => !ids.has(i.id));
+  order = order.filter((id) => !ids.has(id));
+  clearPicks();
   select(null);
   render();
+  renderHidden();
   repack();
 }
-$('#p-delete').addEventListener('click', removeSelected);
+
+// 숨기기: 사이트에서 안 보이고 칸도 비워짐. 아래 '숨긴 항목'에서 언제든 복구
+async function hideItems(list) {
+  if (!list.length) return;
+  const ids = new Set(list.map((i) => i.id));
+  try {
+    await run('숨기는 중…', () => api.hide([...ids]));
+  } catch {
+    return;
+  }
+  list.forEach((it) => (it.hidden = true));
+  items = items.filter((i) => !ids.has(i.id));
+  order = order.filter((id) => !ids.has(id));
+  hiddenItems = [...list, ...hiddenItems];
+  clearPicks();
+  select(null);
+  render();
+  renderHidden();
+  repack();
+}
+
+// 복구: 채우기를 켰으면 맨 뒤에, 껐으면 가장 앞의 빈자리에 다시 놓음
+async function restoreItems(list) {
+  if (!list.length) return;
+  const ids = new Set(list.map((i) => i.id));
+  const prevItems = items;
+  const prevOrder = order;
+  for (const it of list) it.w = Math.min(COLS, it.w || 1);
+  if (autoPack) {
+    items = [...items, ...list];
+    order = [...order, ...list.map((i) => i.id)];
+    const m = packed();
+    for (const it of list) Object.assign(it, m.get(it.id));
+  } else {
+    for (const it of list) {
+      Object.assign(it, firstFree(it.w, it.h));
+      items = [...items, it];
+      order = [...order, it.id];
+    }
+  }
+  try {
+    await run('복구 중…', () => api.restore(list.map(({ id, x, y, w }) => ({ id, x, y, w }))));
+  } catch {
+    items = prevItems;
+    order = prevOrder;
+    return;
+  }
+  list.forEach((it) => (it.hidden = false));
+  hiddenItems = hiddenItems.filter((i) => !ids.has(i.id));
+  select(null);
+  render();
+  renderHidden();
+  // 복구한 상품을 선택 상태로 보여줌
+  picked.clear();
+  ids.forEach((id) => picked.add(id));
+  syncPicks();
+  tileOf(list[0])?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  repack();
+}
+
+const tray = $('#hidden-tray');
+const hiddenBtn = $('#hidden-btn');
+function renderHidden() {
+  const n = hiddenItems.length;
+  tray.hidden = !n;
+  hiddenBtn.hidden = !n;
+  hiddenBtn.textContent = `숨긴 항목 ${n}`;
+  $('#h-count').textContent = n;
+  $('#h-list').replaceChildren(
+    ...hiddenItems.map((it) =>
+      h(
+        'div',
+        { class: 'hcard' },
+        h(
+          'div',
+          { class: 'hthumb' },
+          it.kind === 'text' ? h('span', { text: it.label?.trim() || '텍스트' }) : h('img', { src: it.thumb_url || it.image_url, alt: '' }),
+        ),
+        h('span', { class: 'hname', text: nameOf(it) }),
+        h(
+          'div',
+          { class: 'hact' },
+          h('button', { type: 'button', text: '복구', onclick: () => restoreItems([it]) }),
+          h('button', { type: 'button', class: 'del', text: '삭제', onclick: () => deleteItems([it]) }),
+        ),
+      ),
+    ),
+  );
+}
+$('#h-all').addEventListener('click', () => restoreItems([...hiddenItems].reverse()));
+hiddenBtn.addEventListener('click', () => tray.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+
+$('#p-delete').addEventListener('click', () => selected && deleteItems([selected]));
+$('#p-hide').addEventListener('click', () => selected && hideItems([selected]));
+$('#m-hide').addEventListener('click', () => hideItems(pickedItems()));
+$('#m-delete').addEventListener('click', () => deleteItems(pickedItems()));
+$('#m-clear').addEventListener('click', clearPicks);
 
 addEventListener('keydown', (e) => {
+  if (editor.hidden) return;
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
   if (e.key === 'Escape') {
-    if (drag) endDrag(e, true);
-    else if (!typing) select(null);
+    if (drag || marquee) endDrag(e, true);
+    else if (!typing) {
+      if (picked.size) clearPicks();
+      else select(null);
+    }
   }
-  if ((e.key === 'Delete' || e.key === 'Backspace') && selected && !typing) removeSelected();
+  if ((e.key === 'Delete' || e.key === 'Backspace') && !typing && !drag) {
+    if (picked.size) deleteItems(pickedItems());
+    else if (selected) deleteItems([selected]);
+  }
+  // ⌘A / Ctrl+A: 전부 선택
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a' && !typing) {
+    e.preventDefault();
+    select(null);
+    items.forEach((i) => picked.add(i.id));
+    syncPicks();
+  }
 });
 
 /* ───────── 로그인 / 시작 ───────── */
@@ -899,9 +1211,12 @@ async function enter() {
     status('로컬 연습 모드 — 실제 사이트에는 반영되지 않습니다');
     clearTimeout(statusTimer);
   }
-  items = await api.list();
+  const all = await api.list();
+  items = all.filter((i) => !i.hidden);
+  hiddenItems = all.filter((i) => i.hidden);
   order = readingOrder();
   render();
+  renderHidden();
   fitAll(grid, '.txt');
   syncPack();
   repack();

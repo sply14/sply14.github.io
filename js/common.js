@@ -45,14 +45,14 @@ export function safeUrl(u) {
 export async function loadLocal() {
   const raw = localStorage.getItem(LOCAL_KEY);
   if (raw) return JSON.parse(raw);
-  const { demoItems } = await import('./demo.js?v=1794881493');
+  const { demoItems } = await import('./demo.js?v=1794897448');
   const seed = demoItems();
   localStorage.setItem(LOCAL_KEY, JSON.stringify(seed));
   return seed;
 }
 
 export async function fetchItems() {
-  if (LOCAL) return loadLocal();
+  if (LOCAL) return (await loadLocal()).filter((i) => !i.hidden);
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?select=*&order=y.asc,x.asc`, {
     headers: { apikey: SUPABASE_KEY },
   });
