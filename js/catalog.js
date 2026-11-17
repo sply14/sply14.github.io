@@ -1,4 +1,4 @@
-import { h, fetchItems, formatPrice, safeUrl, look, fitAll, MOBILE_COLS } from './common.js?v=1794897448';
+import { h, fetchItems, formatPrice, safeUrl, look, fitAll, MOBILE_COLS } from './common.js?v=1794897643';
 
 const grid = document.getElementById('grid');
 const detail = document.getElementById('detail');
@@ -249,25 +249,41 @@ function renderDetail(dir = 0) {
     slide.addEventListener('pointerleave', () => slide.classList.remove('zoom'));
   });
 
-  // PC: 사진 위에서 마우스 휠을 굴리면 사진이 넘어감 (휠 한 칸 = 한 장)
-  let wheelAcc = 0, wheelAt = 0, wheelIdx = null, wheelIdle;
+  // PC: 사진 위에서 휠을 굴리면 사진이 넘어감. 휠 마우스는 한 칸에 한 장씩(빨리 굴리면 연달아),
+  // 트랙패드·매직마우스는 한 번 쓸면 한 장 (손을 뗀 뒤 관성으로 계속 들어오는 신호는 무시)
+  let wheelAt = 0, wheelIdx = null, wheelIdle, wheelAcc = 0, swiped = false, lastAbs = 0;
   stage.addEventListener('wheel', (e) => {
-    if (slides.length < 2) return;
+    if (slides.length < 2 || e.ctrlKey) return;
     e.preventDefault();
     const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
-    const unit = e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 800 : 1;
-    wheelAcc += d * unit;
+    const abs = Math.abs(d);
+    // 휠 마우스는 한 칸마다 wheelDelta가 120의 배수로 들어옴 (트랙패드는 자잘한 값)
+    const wd = e.wheelDeltaY || e.wheelDelta || 0;
+    const notch = e.deltaMode !== 0 || (wd !== 0 && Math.abs(wd) % 120 === 0 && !e.deltaX);
     clearTimeout(wheelIdle);
-    wheelIdle = setTimeout(() => { wheelAcc = 0; wheelIdx = null; }, 260);
+    wheelIdle = setTimeout(() => { wheelAcc = 0; wheelIdx = null; swiped = false; lastAbs = 0; }, 140);
     const now = performance.now();
-    if (Math.abs(wheelAcc) < 50 || now - wheelAt < 110) return;
-    const from = wheelIdx ?? index();
-    const to = Math.max(0, Math.min(slides.length - 1, from + Math.sign(wheelAcc)));
+    const move = (sign) => {
+      const from = wheelIdx ?? index();
+      const to = Math.max(0, Math.min(slides.length - 1, from + sign));
+      wheelAt = now;
+      if (to === from) return;
+      wheelIdx = to;
+      go(to);
+    };
+    if (notch) {
+      if (now - wheelAt >= 110) move(Math.sign(d));
+      return;
+    }
+    // 관성 신호는 점점 작아짐. 다시 커지면 새로 쓸어 넘긴 것
+    if (swiped && abs > lastAbs * 1.6 + 6 && now - wheelAt > 180) { swiped = false; wheelAcc = 0; }
+    lastAbs = abs;
+    if (swiped) return;
+    wheelAcc += d;
+    if (Math.abs(wheelAcc) < 40) return;
+    swiped = true;
+    move(Math.sign(wheelAcc));
     wheelAcc = 0;
-    wheelAt = now;
-    if (to === from) return;
-    wheelIdx = to;
-    go(to);
   }, { passive: false });
 
   const closeBtn = h('button', { type: 'button', text: 'Close ×', onclick: close });
@@ -326,37 +342,48 @@ function renderDetail(dir = 0) {
   return slides[0]?.firstChild;
 }
 
-/* 세로로 긴 사진이면 사진 칸(PC)을 좁혀 팝업 폭을 줄이고, 모바일은 사진 칸을 더 높게 → 사진 양옆 여백이 과하지 않게 */
+/* 세로로 긴 사진이면 사진 칸(PC)을 좁혀 팝업 폭을 줄이고, 모바일은 사진 칸을 더 높게 → 사진 양옆 여백이 과하지 않게.
+   기준은 처음 보이는 첫 번째 사진 하나. 비율은 상품에 마우스를 올릴 때 미리 알아둬서 팝업이 열린 뒤 폭이 바뀌지 않게 함 */
+const ratios = new Map(); // 사진 주소 → 가로/세로 비율
+const firstPhoto = (it) => (Array.isArray(it.detail_urls) ? it.detail_urls : []).filter(Boolean)[0] || it.image_url || it.thumb_url;
+function preload(it) {
+  const src = it && firstPhoto(it);
+  if (!src || ratios.has(src)) return;
+  ratios.set(src, 0);
+  const im = new Image();
+  im.onload = () => ratios.set(src, im.naturalWidth / im.naturalHeight || 0);
+  im.onerror = () => ratios.delete(src);
+  im.src = src;
+}
+
 let fitSheetNow = null;
 function fitSheet(sheet, slides) {
-  const imgs = slides.map((s) => s.firstChild);
+  const first = slides[0]?.firstChild;
+  if (!first) return;
+  const src = first.getAttribute('src');
   const apply = () => {
     if (!sheet.isConnected) return;
-    // 불러온 사진 중 가장 가로로 넓은 비율 기준 (그 사진도 잘리지 않게)
-    const ratios = imgs.filter((im) => im.naturalWidth).map((im) => im.naturalWidth / im.naturalHeight);
-    const r = ratios.length ? Math.max(...ratios) : 1;
+    if (first.naturalWidth) ratios.set(src, first.naturalWidth / first.naturalHeight);
+    const r = ratios.get(src) || 1;
     const stage = sheet.querySelector('.stage');
     if (matchMedia('(max-width: 767px)').matches) {
       sheet.style.removeProperty('--plate-w');
       // 사진 폭(82%)에 맞는 높이, 화면 높이의 72%까지
-      if (r < 0.95) stage.style.height = `${Math.min((innerWidth * 0.82) / r, innerHeight * 0.72)}px`;
-      else stage.style.height = '';
+      stage.style.height = r < 0.95 ? `${Math.min((innerWidth * 0.82) / r, innerHeight * 0.72)}px` : '';
       return;
     }
     stage.style.height = '';
     const half = sheet.parentElement.clientWidth / 2;
-    if (r >= 0.95) {
-      sheet.style.removeProperty('--plate-w');
-      return;
-    }
     // 사진이 높이에 꽉 찰 때의 폭 + 좌우 여백(18%) — 반 화면보다 넓어지지 않게
-    const need = (stage.clientHeight * r) / 0.82;
-    const w = Math.round(Math.min(half, Math.max(320, need)));
-    if (w < half - 4) sheet.style.setProperty('--plate-w', `${w}px`);
+    const w = Math.round(Math.min(half, Math.max(320, (stage.clientHeight * r) / 0.82)));
+    if (r < 0.95 && w < half - 4) sheet.style.setProperty('--plate-w', `${w}px`);
     else sheet.style.removeProperty('--plate-w');
   };
-  imgs.forEach((im) => !im.complete && im.addEventListener('load', apply, { once: true }));
+  // 처음 한 번은 폭이 미끄러지듯 변하지 않고 바로 맞춰짐
+  sheet.style.transition = 'none';
   apply();
+  if (!ratios.get(src) && !first.complete) first.addEventListener('load', apply, { once: true });
+  requestAnimationFrame(() => (sheet.style.transition = ''));
   fitSheetNow = apply;
 }
 addEventListener('resize', () => fitSheetNow?.());
@@ -409,6 +436,8 @@ function setupSwipe(sheet, gallery, imageCount) {
   });
 }
 
+const sameAsGrid = (it) => !(Array.isArray(it.detail_urls) ? it.detail_urls : []).some(Boolean);
+
 function withTransition(update) {
   if (reduced || !document.startViewTransition) {
     update();
@@ -432,9 +461,11 @@ function open(i, { instant = false } = {}) {
     history.replaceState(null, '', `#${items[i].id}`);
     return hero;
   };
-  if (instant || reduced || !document.startViewTransition) {
+  // 상세 사진이 따로 있으면 그리드 사진과 다른 사진이 뜨므로, 늘어나는 전환 대신 부드럽게 나타남
+  if (instant || reduced || !document.startViewTransition || !sameAsGrid(items[i])) {
     detail.classList.add('fade');
-    show();
+    const hero = show();
+    if (hero) hero.style.viewTransitionName = '';
     return;
   }
   detail.classList.remove('fade');
@@ -454,12 +485,13 @@ function close() {
     const r = thumb.getBoundingClientRect();
     return r.bottom > 0 && r.top < innerHeight;
   })();
-  const morph = hero && thumbVisible && atFirst;
+  const morph = hero && thumbVisible && atFirst && sameAsGrid(items[current]);
   if (morph) hero.style.viewTransitionName = 'hero';
 
   withTransition(() => {
     current = -1;
     photos = null;
+    fitSheetNow = null;
     detail.hidden = true;
     detail.replaceChildren();
     detail.style.background = '';
@@ -501,6 +533,9 @@ try {
   renderGrid();
   fitAll(grid, '.label');
   hideTag = setupPointer();
+  const warm = (e) => preload(items[e.target.closest?.('.item')?.dataset.i]);
+  grid.addEventListener('pointerover', warm, { passive: true });
+  grid.addEventListener('touchstart', warm, { passive: true });
   setupCursor();
   const id = decodeURIComponent(location.hash.slice(1));
   const i = id ? items.findIndex((it) => String(it.id) === id) : -1;

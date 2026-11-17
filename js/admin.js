@@ -1,4 +1,4 @@
-import { look, fitText, fitAll, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1794897448';
+import { look, fitText, fitAll, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1794897643';
 
 const $ = (s) => document.querySelector(s);
 const grid = $('#grid');
@@ -70,8 +70,12 @@ async function remoteApi() {
       if (rows.length !== ids.length) throw new Error('일부 상품을 숨기지 못했습니다');
     },
     // 숨긴 상품을 새 자리와 함께 다시 보이게
+    // 자리를 먼저 한 번에 저장한 뒤(숨긴 상태라 사이트에 영향 없음), 한 번의 요청으로 전부 보이게 → 일부만 복구되는 일이 없음
     async restore(rows) {
-      await Promise.all(rows.map(({ id, ...pos }) => this.update(id, { ...pos, hidden: false })));
+      await this.setLayout(rows);
+      const ids = rows.map((r) => r.id);
+      const done = ok(await sb.from(TABLE).update({ hidden: false, updated_at: new Date().toISOString() }).in('id', ids).select('id'));
+      if (done.length !== ids.length) throw new Error('일부 상품을 복구하지 못했습니다');
     },
     async upload(blob) {
       const ext = (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
@@ -657,7 +661,7 @@ async function prepare(file) {
 }
 
 async function addFiles(files, cell) {
-  const list = [...files].filter((f) => f.type.startsWith('image/'));
+  const list = [...files].filter(isImage);
   let last = null;
   let at = autoPack ? indexForCell(cell) : 0;
   for (const [n, file] of list.entries()) {
@@ -714,23 +718,60 @@ async function addDetails(files) {
   const it = selected;
   // 폴더에서 여러 장을 끌어와도 파일 이름 순서(1, 2, … 10)대로 등록
   files = [...files]
-    .filter((f) => f.type.startsWith('image/'))
+    .filter(isImage)
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-  if (!it || !files.length) return;
-  await run('업로드 중…', async () => {
-    const urls = [];
-    for (const [i, f] of files.entries()) {
-      status(`상세 사진 업로드 중… ${i + 1}/${files.length}`);
+  if (!it) return;
+  if (!files.length) return status('올릴 수 있는 사진 파일이 없습니다 (PNG · JPG · WebP · AVIF)', true);
+  // 한 장이 실패해도 나머지는 등록. 실패한 파일은 이름을 알려줌
+  const urls = [];
+  const failed = [];
+  for (const [i, f] of files.entries()) {
+    status(`상세 사진 업로드 중… ${i + 1}/${files.length}`);
+    try {
       urls.push(await api.upload((await prepare(f)).full));
+    } catch (err) {
+      console.error(err);
+      failed.push(f.name);
     }
-    const detail_urls = [...(it.detail_urls || []), ...urls];
-    await api.update(it.id, { detail_urls }).catch((err) => {
-      api.removeFiles(urls);
-      throw err;
-    });
-    it.detail_urls = detail_urls;
-  });
-  fillPanel();
+  }
+  if (urls.length) {
+    try {
+      const detail_urls = [...(it.detail_urls || []), ...urls];
+      await api.update(it.id, { detail_urls });
+      it.detail_urls = detail_urls;
+    } catch (err) {
+      console.error(err);
+      api.removeFiles(urls); // 등록에 실패하면 방금 올린 사진도 정리
+      status(`오류: ${err.message || err}`, true);
+      return;
+    }
+  }
+  if (failed.length) status(`${urls.length}장 추가 · ${failed.length}장 실패: ${failed.join(', ')}${failed.some((n) => /\.hei[cf]$/i.test(n)) ? ' (HEIC는 JPG로 바꿔서 올려주세요)' : ''}`, true);
+  else status(`상세 사진 ${urls.length}장 추가됨`);
+  if (selected === it) fillPanel();
+}
+
+const isImage = (f) => f.type.startsWith('image/') || /\.(png|jpe?g|webp|avif|hei[cf])$/i.test(f.name);
+
+// 끌어다 놓은 것에서 사진 파일을 모두 꺼냄 (폴더를 통째로 놓으면 그 안의 사진까지)
+function droppedFiles(dt) {
+  const entries = [...(dt.items || [])].map((i) => i.webkitGetAsEntry?.()).filter(Boolean);
+  if (!entries.some((en) => en.isDirectory)) return Promise.resolve([...dt.files]);
+  const walk = (en) =>
+    en.isFile
+      ? new Promise((res) => en.file((f) => res([f]), () => res([])))
+      : new Promise((res) => {
+          const reader = en.createReader();
+          const all = [];
+          const next = () =>
+            reader.readEntries(async (batch) => {
+              if (!batch.length) return res((await Promise.all(all.map(walk))).flat());
+              all.push(...batch);
+              next();
+            }, () => res([]));
+          next();
+        });
+  return Promise.all(entries.map(walk)).then((x) => x.flat().filter((f) => !f.name.startsWith('.')));
 }
 
 fileInput.addEventListener('change', async () => {
@@ -807,7 +848,7 @@ grid.addEventListener('drop', (e) => {
   e.preventDefault();
   const cell = dropCell || cellAt(e.clientX, e.clientY);
   clearDrop();
-  if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files, cell);
+  droppedFiles(e.dataTransfer).then((files) => files.length && addFiles(files, cell));
 });
 // 편집 패널에 사진 파일을 끌어다 놓으면 상세 사진으로 한꺼번에 추가
 panel.addEventListener('dragover', (e) => {
@@ -823,7 +864,7 @@ panel.addEventListener('drop', (e) => {
   e.preventDefault();
   e.stopPropagation();
   panel.classList.remove('dropping');
-  if (selected && selected.kind !== 'text' && e.dataTransfer.files.length) addDetails(e.dataTransfer.files);
+  if (selected && selected.kind !== 'text') droppedFiles(e.dataTransfer).then(addDetails);
 });
 addEventListener('dragover', (e) => e.preventDefault());
 addEventListener('drop', (e) => e.preventDefault());
@@ -1048,9 +1089,22 @@ $('#p-close').addEventListener('click', () => select(null));
 
 /* ───────── 삭제 · 숨기기 · 복구 ───────── */
 
+// 삭제·숨기기·복구는 한 번에 하나씩만 (버튼을 연달아 눌러도 같은 상품이 두 번 처리되지 않게)
+let working = false;
+async function exclusive(fn) {
+  if (working) return;
+  working = true;
+  try {
+    await fn();
+  } finally {
+    working = false;
+  }
+}
+
 const nameOf = (it) => (it.kind === 'text' ? it.label?.trim() : it.name || it.code) || (it.kind === 'text' ? '텍스트' : '이름 없는 상품');
 
-async function deleteItems(list) {
+const deleteItems = (list) => exclusive(() => deleteItemsNow(list));
+async function deleteItemsNow(list) {
   if (!list.length) return;
   const what = list.length === 1 ? `"${nameOf(list[0])}"을(를)` : `${list.length}개를`;
   if (!confirm(`${what} 삭제할까요? 되돌릴 수 없습니다.\n(나중에 다시 쓸 거라면 '숨기기'를 쓰세요)`)) return;
@@ -1072,7 +1126,8 @@ async function deleteItems(list) {
 }
 
 // 숨기기: 사이트에서 안 보이고 칸도 비워짐. 아래 '숨긴 항목'에서 언제든 복구
-async function hideItems(list) {
+const hideItems = (list) => exclusive(() => hideItemsNow(list));
+async function hideItemsNow(list) {
   if (!list.length) return;
   const ids = new Set(list.map((i) => i.id));
   try {
@@ -1092,7 +1147,8 @@ async function hideItems(list) {
 }
 
 // 복구: 채우기를 켰으면 맨 뒤에, 껐으면 가장 앞의 빈자리에 다시 놓음
-async function restoreItems(list) {
+const restoreItems = (list) => exclusive(() => restoreItemsNow(list));
+async function restoreItemsNow(list) {
   if (!list.length) return;
   const ids = new Set(list.map((i) => i.id));
   const prevItems = items;
@@ -1111,7 +1167,7 @@ async function restoreItems(list) {
     }
   }
   try {
-    await run('복구 중…', () => api.restore(list.map(({ id, x, y, w }) => ({ id, x, y, w }))));
+    await run('복구 중…', () => api.restore(list.map(({ id, x, y, w, h: hh }) => ({ id, x, y, w, h: hh }))));
   } catch {
     items = prevItems;
     order = prevOrder;

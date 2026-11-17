@@ -504,15 +504,21 @@ html.has-cur, html.has-cur * { cursor: none !important; }
   .run .nav button { font-size: 18px; }
 }
 
-/* 스크롤바: 마우스가 올라간 영역의 가장자리에만 얇은 검정 막대 */
+/* 스크롤바: 가장자리의 얇은 검정 막대. 마우스가 있는 기기에서는 마우스가 올라간 영역에만 나타남 */
 @supports (scrollbar-color: auto) {
-  * { scrollbar-width: thin; scrollbar-color: transparent transparent; }
-  :hover { scrollbar-color: var(--ink) transparent; }
+  * { scrollbar-width: thin; scrollbar-color: var(--ink) transparent; }
 }
 ::-webkit-scrollbar { width: 5px; height: 5px; background: transparent; }
 ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
-::-webkit-scrollbar-thumb { background: transparent; border-radius: 0; }
-:hover::-webkit-scrollbar-thumb { background: var(--ink); }
+::-webkit-scrollbar-thumb { background: var(--ink); border-radius: 0; }
+@media (hover: hover) {
+  @supports (scrollbar-color: auto) {
+    * { scrollbar-color: transparent transparent; }
+    :hover { scrollbar-color: var(--ink) transparent; }
+  }
+  ::-webkit-scrollbar-thumb { background: transparent; }
+  :hover::-webkit-scrollbar-thumb { background: var(--ink); }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) {
