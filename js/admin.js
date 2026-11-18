@@ -1,4 +1,4 @@
-import { look, fitText, fitAll, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1794897643';
+import { look, fitText, fitAll, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1794974409';
 
 const $ = (s) => document.querySelector(s);
 const grid = $('#grid');
@@ -649,20 +649,27 @@ grid.addEventListener('pointercancel', (e) => endDrag(e, true));
 // 올리기 전에 브라우저에서 크기를 줄여 원본(최대 2000px)과 그리드용(최대 800px) 두 장을 만듦
 async function prepare(file) {
   const bmp = await createImageBitmap(file);
-  const make = (max) => {
-    const sc = Math.min(1, max / Math.max(bmp.width, bmp.height));
-    const c = document.createElement('canvas');
-    c.width = Math.max(1, Math.round(bmp.width * sc));
-    c.height = Math.max(1, Math.round(bmp.height * sc));
-    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
-    return new Promise((res) => c.toBlob(res, 'image/webp', 0.9));
-  };
-  return { full: await make(2000), thumb: await make(800) };
+  try {
+    return { full: await make(bmp, 2000), thumb: await make(bmp, 800) };
+  } finally {
+    bmp.close(); // 큰 사진 여러 장을 올릴 때 메모리가 쌓이지 않게 바로 해제
+  }
+}
+
+// 사진을 최대 max 픽셀 크기의 WebP로 변환
+function make(bmp, max) {
+  const sc = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(bmp.width * sc));
+  c.height = Math.max(1, Math.round(bmp.height * sc));
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('사진 변환 실패'))), 'image/webp', 0.9));
 }
 
 async function addFiles(files, cell) {
   const list = [...files].filter(isImage);
   let last = null;
+  const failed = [];
   let at = autoPack ? indexForCell(cell) : 0;
   for (const [n, file] of list.entries()) {
     try {
@@ -688,9 +695,10 @@ async function addFiles(files, cell) {
         return row;
       });
     } catch {
-      break;
+      failed.push(file.name); // 한 장이 안 돼도 나머지는 계속 올림
     }
   }
+  if (failed.length) status(failMessage(list.length - failed.length, failed), true);
   if (last) {
     select(last);
     tileOf(last)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -714,8 +722,20 @@ async function replaceMain(file) {
   fillPanel();
 }
 
-async function addDetails(files) {
+// 실패한 파일 이름을 알려주는 안내 문구 (HEIC는 브라우저가 못 읽으니 JPG로 바꾸라고 덧붙임)
+const failMessage = (okCount, failed) =>
+  `${okCount}장 추가 · ${failed.length}장 실패: ${failed.join(', ')}${failed.some((n) => /\.hei[cf]$/i.test(n)) ? ' (HEIC는 JPG로 바꿔서 올려주세요)' : ''}`;
+
+// 상세 사진은 한 묶음씩 차례로 올림 (올리는 도중에 또 끌어다 놓아도 앞의 사진이 덮어써지지 않게)
+let detailQueue = Promise.resolve();
+function addDetails(files) {
   const it = selected;
+  const job = detailQueue.then(() => addDetailsNow(it, files));
+  detailQueue = job.catch(() => {});
+  return job;
+}
+
+async function addDetailsNow(it, files) {
   // 폴더에서 여러 장을 끌어와도 파일 이름 순서(1, 2, … 10)대로 등록
   files = [...files]
     .filter(isImage)
@@ -742,11 +762,11 @@ async function addDetails(files) {
     } catch (err) {
       console.error(err);
       api.removeFiles(urls); // 등록에 실패하면 방금 올린 사진도 정리
-      status(`오류: ${err.message || err}`, true);
+      status(`오류: ${err.message || err} — 사진이 등록되지 않았습니다${failed.length ? ` (변환 실패: ${failed.join(', ')})` : ''}`, true);
       return;
     }
   }
-  if (failed.length) status(`${urls.length}장 추가 · ${failed.length}장 실패: ${failed.join(', ')}${failed.some((n) => /\.hei[cf]$/i.test(n)) ? ' (HEIC는 JPG로 바꿔서 올려주세요)' : ''}`, true);
+  if (failed.length) status(failMessage(urls.length, failed), true);
   else status(`상세 사진 ${urls.length}장 추가됨`);
   if (selected === it) fillPanel();
 }
@@ -1092,7 +1112,7 @@ $('#p-close').addEventListener('click', () => select(null));
 // 삭제·숨기기·복구는 한 번에 하나씩만 (버튼을 연달아 눌러도 같은 상품이 두 번 처리되지 않게)
 let working = false;
 async function exclusive(fn) {
-  if (working) return;
+  if (working) return status('앞의 작업이 끝난 뒤에 다시 눌러주세요', true);
   working = true;
   try {
     await fn();

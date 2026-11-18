@@ -1,4 +1,4 @@
-import { h, fetchItems, formatPrice, safeUrl, look, fitAll, MOBILE_COLS } from './common.js?v=1794897643';
+import { h, fetchItems, formatPrice, safeUrl, look, fitAll, MOBILE_COLS } from './common.js?v=1794974409';
 
 const grid = document.getElementById('grid');
 const detail = document.getElementById('detail');
@@ -257,9 +257,10 @@ function renderDetail(dir = 0) {
     e.preventDefault();
     const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
     const abs = Math.abs(d);
-    // 휠 마우스는 한 칸마다 wheelDelta가 120의 배수로 들어옴 (트랙패드는 자잘한 값)
-    const wd = e.wheelDeltaY || e.wheelDelta || 0;
-    const notch = e.deltaMode !== 0 || (wd !== 0 && Math.abs(wd) % 120 === 0 && !e.deltaX);
+    // 휠 마우스는 한 칸마다 wheelDelta가 120의 배수로 들어옴 (트랙패드는 자잘한 값).
+    // 맥 크롬의 트랙패드는 wheelDelta = 이동량 × 3 이라 120의 배수가 우연히 나올 수 있어 그 경우는 트랙패드로 봄
+    const wd = Math.abs(e.wheelDeltaY || e.wheelDelta || 0);
+    const notch = e.deltaMode !== 0 || (wd !== 0 && wd % 120 === 0 && wd !== Math.round(abs * 3) && !e.deltaX);
     clearTimeout(wheelIdle);
     wheelIdle = setTimeout(() => { wheelAcc = 0; wheelIdx = null; swiped = false; lastAbs = 0; }, 140);
     const now = performance.now();
@@ -358,13 +359,15 @@ function preload(it) {
 
 let fitSheetNow = null;
 function fitSheet(sheet, slides) {
-  const first = slides[0]?.firstChild;
-  if (!first) return;
-  const src = first.getAttribute('src');
+  const imgs = slides.map((s) => s.firstChild).filter(Boolean);
+  if (!imgs.length) return;
+  const src = imgs[0].getAttribute('src');
   const apply = () => {
     if (!sheet.isConnected) return;
-    if (first.naturalWidth) ratios.set(src, first.naturalWidth / first.naturalHeight);
-    const r = ratios.get(src) || 1;
+    // 첫 사진은 미리 알아둔 비율, 나머지는 불러온 것부터. 그중 가장 가로로 넓은 사진 기준 (가로 사진이 작게 보이지 않게)
+    if (imgs[0].naturalWidth) ratios.set(src, imgs[0].naturalWidth / imgs[0].naturalHeight);
+    const known = [ratios.get(src) || 0, ...imgs.slice(1).filter((im) => im.naturalWidth).map((im) => im.naturalWidth / im.naturalHeight)];
+    const r = Math.max(...known) || 1;
     const stage = sheet.querySelector('.stage');
     if (matchMedia('(max-width: 767px)').matches) {
       sheet.style.removeProperty('--plate-w');
@@ -379,10 +382,13 @@ function fitSheet(sheet, slides) {
     if (r < 0.95 && w < half - 4) sheet.style.setProperty('--plate-w', `${w}px`);
     else sheet.style.removeProperty('--plate-w');
   };
-  // 처음 한 번은 폭이 미끄러지듯 변하지 않고 바로 맞춰짐
+  // 처음 한 번은 폭이 미끄러지듯 변하지 않고 바로 맞춰짐. 뒤늦게 불러온 사진이 더 넓으면 그때 부드럽게 넓어짐
   sheet.style.transition = 'none';
   apply();
-  if (!ratios.get(src) && !first.complete) first.addEventListener('load', apply, { once: true });
+  imgs.forEach((im, n) => {
+    if (im.complete && (n || ratios.get(src))) return;
+    im.addEventListener('load', apply, { once: true });
+  });
   requestAnimationFrame(() => (sheet.style.transition = ''));
   fitSheetNow = apply;
 }
@@ -451,26 +457,25 @@ function open(i, { instant = false } = {}) {
   lastFocus = document.activeElement;
   hideTag?.();
   const thumb = thumbOf(i);
-  const show = () => {
+  const show = (morph) => {
     if (thumb) thumb.style.viewTransitionName = '';
     current = i;
     detail.hidden = false;
     document.documentElement.style.overflow = 'hidden';
     const hero = renderDetail();
-    if (hero) hero.style.viewTransitionName = 'hero';
+    if (hero && morph) hero.style.viewTransitionName = 'hero';
     history.replaceState(null, '', `#${items[i].id}`);
     return hero;
   };
   // 상세 사진이 따로 있으면 그리드 사진과 다른 사진이 뜨므로, 늘어나는 전환 대신 부드럽게 나타남
   if (instant || reduced || !document.startViewTransition || !sameAsGrid(items[i])) {
     detail.classList.add('fade');
-    const hero = show();
-    if (hero) hero.style.viewTransitionName = '';
+    show(false);
     return;
   }
   detail.classList.remove('fade');
   if (thumb) thumb.style.viewTransitionName = 'hero';
-  withTransition(show).then(() => {
+  withTransition(() => show(true)).then(() => {
     const hero = detail.querySelector('.slide img');
     if (hero) hero.style.viewTransitionName = '';
   });
@@ -533,9 +538,15 @@ try {
   renderGrid();
   fitAll(grid, '.label');
   hideTag = setupPointer();
-  const warm = (e) => preload(items[e.target.closest?.('.item')?.dataset.i]);
-  grid.addEventListener('pointerover', warm, { passive: true });
-  grid.addEventListener('touchstart', warm, { passive: true });
+  // 마우스가 상품 위에 잠깐 머물면 그 상품의 첫 사진 비율을 미리 알아둠 (그냥 스쳐 지나가면 받지 않음)
+  let warmTimer;
+  grid.addEventListener('pointerover', (e) => {
+    clearTimeout(warmTimer);
+    if (e.pointerType !== 'mouse') return;
+    const it = items[e.target.closest?.('.item')?.dataset.i];
+    if (it) warmTimer = setTimeout(() => preload(it), 150);
+  }, { passive: true });
+  grid.addEventListener('pointerleave', () => clearTimeout(warmTimer), { passive: true });
   setupCursor();
   const id = decodeURIComponent(location.hash.slice(1));
   const i = id ? items.findIndex((it) => String(it.id) === id) : -1;

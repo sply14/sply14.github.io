@@ -24,12 +24,13 @@ create table public.catalog_items (
   y int not null default 0,
   w int not null default 1,
   h int not null default 1,
+  hidden boolean not null default false,   -- 숨김: 사이트에서 빼두고 관리자 화면에서 복구
   constraint catalog_items_grid check (x >= 0 and y >= 0 and w >= 1 and h >= 1 and x + w <= 10)
 );
 
 alter table public.catalog_items enable row level security;
 
-create policy "catalog public read" on public.catalog_items for select to anon, authenticated using (true);
+create policy "catalog public read" on public.catalog_items for select to anon, authenticated using (not hidden or (select public.is_admin()));
 create policy "catalog admin insert" on public.catalog_items for insert to authenticated with check ((select public.is_admin()));
 create policy "catalog admin update" on public.catalog_items for update to authenticated using ((select public.is_admin())) with check ((select public.is_admin()));
 create policy "catalog admin delete" on public.catalog_items for delete to authenticated using ((select public.is_admin()));
