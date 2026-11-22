@@ -1,4 +1,4 @@
-import { look, fitText, fitAll, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1794974409';
+import { look, fitText, fitAll, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1795357056';
 
 const $ = (s) => document.querySelector(s);
 const grid = $('#grid');
@@ -1294,8 +1294,22 @@ async function enter() {
   render();
   renderHidden();
   fitAll(grid, '.txt');
+  // 화면을 열 때는 저장하지 않는다. 저장된 배치에 빈칸이 있으면 (다른 기기에서 일부러 만든 자유 배치일 수 있으므로)
+  // 이 기기의 '채우기' 설정과 상관없이 끈 상태로 시작한다. 채우기는 사용자가 버튼을 눌렀을 때만 적용된다.
+  if (autoPack && !isPacked()) {
+    autoPack = false;
+    if (!LOCAL) status('저장된 배치에 빈칸이 있어 \'빈칸 없이 채우기\'를 끈 상태로 열었습니다');
+  }
   syncPack();
-  repack();
+}
+
+// 지금 배치가 '빈칸 없이 채우기' 결과와 똑같은지
+function isPacked() {
+  const byId = new Map(items.map((i) => [i.id, i]));
+  return [...packed()].every(([id, p]) => {
+    const o = byId.get(id);
+    return o && o.x === p.x && o.y === p.y && o.w === p.w && o.h === p.h;
+  });
 }
 
 const packBtn = $('#pack');
