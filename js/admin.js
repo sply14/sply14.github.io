@@ -1,4 +1,4 @@
-import { look, fitText, fitAll, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1795357056';
+import { look, fitText, fitAll, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1795357224';
 
 const $ = (s) => document.querySelector(s);
 const grid = $('#grid');
@@ -280,7 +280,11 @@ function planGroup(group, fdx, fdy, cell) {
   return { map, order: null };
 }
 
-// 계산된 배치를 확정하고 저장. 실패하면 되돌림
+// 배치 저장은 한 줄로 세워 차례로 보낸다 (앞 저장이 끝나기 전에 다음 저장이 끼어들어 순서가 뒤바뀌지 않게)
+let layoutQueue = Promise.resolve();
+let resyncPending = false;
+
+// 계산된 배치를 확정하고 저장. 실패하면 DB에 실제로 저장된 상태를 다시 읽어와 화면을 맞춤
 function commitChanges(map, newOrder) {
   const changes = [...map]
     .map(([id, pos]) => [items.find((i) => i.id === id), pos])
@@ -291,17 +295,47 @@ function commitChanges(map, newOrder) {
     render();
     return Promise.resolve();
   }
-  const prev = changes.map(([o]) => ({ x: o.x, y: o.y, w: o.w, h: o.h }));
   changes.forEach(([o, pos]) => Object.assign(o, pos));
   render();
   if (selected) fillPanel();
-  const payload = changes.map(([o]) => ({ id: o.id, x: o.x, y: o.y, w: o.w, h: o.h }));
-  return run('저장 중…', () => api.setLayout(payload)).catch(() => {
-    changes.forEach(([o], i) => Object.assign(o, prev[i]));
+  // 바뀐 것만이 아니라 지금 화면의 전체 배치를 보냄 → 어느 저장이 실패해도, 마지막으로 성공한 저장이 겹침 없는 배치가 됨
+  const payload = items.map((o) => ({ id: o.id, x: o.x, y: o.y, w: o.w, h: o.h }));
+  const job = layoutQueue.then(() => run('저장 중…', () => api.setLayout(payload)));
+  layoutQueue = job.catch(() => {
     order = prevOrder;
-    render();
-    if (selected) fillPanel();
+    scheduleResync();
   });
+  return layoutQueue;
+}
+
+// 저장이 실패하면, 줄에 남은 저장이 모두 끝난 뒤 DB 상태를 한 번 다시 읽어옴
+function scheduleResync() {
+  if (resyncPending) return;
+  resyncPending = true;
+  layoutQueue = layoutQueue.then(async () => {
+    resyncPending = false;
+    try {
+      await reload();
+      status('저장에 실패해서 저장된 배치를 다시 불러왔습니다', true);
+    } catch (err) {
+      console.error(err);
+      status('저장에 실패했습니다. 새로고침해서 확인해주세요', true);
+    }
+  });
+}
+
+// DB에서 전체를 다시 읽어 화면을 그림
+async function reload() {
+  const all = await api.list();
+  items = all.filter((i) => !i.hidden);
+  hiddenItems = all.filter((i) => i.hidden);
+  order = readingOrder();
+  selected = selected && items.find((i) => i.id === selected.id);
+  for (const id of [...picked]) if (!items.some((i) => i.id === id)) picked.delete(id);
+  render();
+  renderHidden();
+  fitAll(grid, '.txt');
+  if (selected) fillPanel();
 }
 
 const repack = () => (autoPack ? commitChanges(packed()) : Promise.resolve());
@@ -947,12 +981,17 @@ function fillPanel() {
           type: 'button',
           'aria-label': '상세 사진 삭제',
           text: '×',
-          onclick: async () => {
-            const detail_urls = it.detail_urls.filter((u) => u !== url);
-            await run('저장 중…', () => api.update(it.id, { detail_urls }));
-            it.detail_urls = detail_urls;
-            api.removeFiles([url]);
-            fillPanel();
+          onclick: (e) => {
+            // 업로드와 같은 줄에 세움. 목록은 실행하는 순간의 값으로 계산 (연달아 눌러도 앞의 삭제가 되살아나지 않게)
+            e.currentTarget.disabled = true;
+            const job = detailQueue.then(async () => {
+              const detail_urls = (it.detail_urls || []).filter((u) => u !== url);
+              await run('저장 중…', () => api.update(it.id, { detail_urls }));
+              it.detail_urls = detail_urls;
+              api.removeFiles([url]); // DB에서 빠진 뒤에만 파일을 지움
+            });
+            detailQueue = job.catch(() => {});
+            job.catch(() => {}).finally(() => { if (selected === it) fillPanel(); });
           },
         }),
       ),
@@ -1047,11 +1086,23 @@ form.addEventListener('input', (e) => {
     form.elements.scale.value = scale;
     syncOutputs();
   };
+  let cropQueue = Promise.resolve();
   const save = (it, scale, ox, oy) => {
+    const prev = { scale: it.scale, style: it.style };
     const style = { ...(it.style || {}), ox, oy };
     it.scale = scale;
     it.style = style;
-    return run('저장 중…', () => api.update(it.id, { scale, style })).catch(() => {});
+    const job = cropQueue.then(() => run('저장 중…', () => api.update(it.id, { scale, style })));
+    cropQueue = job.catch(() => {
+      // 실패하면 이전 값으로 되돌림 (그 사이에 더 새로 맞춘 값이 있으면 그쪽을 그대로 둠)
+      if (it.scale !== scale || it.style !== style) return;
+      it.scale = prev.scale;
+      it.style = prev.style;
+      const tile = tileOf(it);
+      if (tile) look(tile, it);
+      if (selected === it) fillPanel();
+    });
+    return cropQueue;
   };
   const current = (it) => ({
     scale: Number(form.elements.scale.value) || 1,
@@ -1287,13 +1338,7 @@ async function enter() {
     status('로컬 연습 모드 — 실제 사이트에는 반영되지 않습니다');
     clearTimeout(statusTimer);
   }
-  const all = await api.list();
-  items = all.filter((i) => !i.hidden);
-  hiddenItems = all.filter((i) => i.hidden);
-  order = readingOrder();
-  render();
-  renderHidden();
-  fitAll(grid, '.txt');
+  await reload();
   // 화면을 열 때는 저장하지 않는다. 저장된 배치에 빈칸이 있으면 (다른 기기에서 일부러 만든 자유 배치일 수 있으므로)
   // 이 기기의 '채우기' 설정과 상관없이 끈 상태로 시작한다. 채우기는 사용자가 버튼을 눌렀을 때만 적용된다.
   if (autoPack && !isPacked()) {

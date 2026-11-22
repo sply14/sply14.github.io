@@ -7,10 +7,9 @@ export const BUCKET = 'catalog';
 export const COLS = 10;        // PC 화면 가로 칸 수
 export const MOBILE_COLS = 5;  // 모바일 화면 가로 칸 수
 
-// 로컬 연습 모드: http://localhost:.../admin.html?local  — Supabase를 건드리지 않고 브라우저 안에서만 동작
-export const LOCAL =
-  ['localhost', '127.0.0.1'].includes(location.hostname) &&
-  new URLSearchParams(location.search).has('local');
+// 연습 모드: 주소 끝에 ?local (예: admin.html?local) — Supabase를 건드리지 않고 이 브라우저 안에서만 동작
+// 배포된 사이트에서도 켜짐: 데이터가 이 브라우저에만 저장되므로 실제 사이트에는 영향이 없음
+export const LOCAL = new URLSearchParams(location.search).has('local');
 export const LOCAL_KEY = 'catalog-local-items-v2';
 
 export function h(tag, attrs = {}, ...kids) {
@@ -45,7 +44,7 @@ export function safeUrl(u) {
 export async function loadLocal() {
   const raw = localStorage.getItem(LOCAL_KEY);
   if (raw) return JSON.parse(raw);
-  const { demoItems } = await import('./demo.js?v=1795357056');
+  const { demoItems } = await import('./demo.js?v=1795357224');
   const seed = demoItems();
   localStorage.setItem(LOCAL_KEY, JSON.stringify(seed));
   return seed;

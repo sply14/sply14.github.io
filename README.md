@@ -16,6 +16,7 @@ python3 -m http.server 4388
 - 카탈로그: http://localhost:4388/
 - 관리자: http://localhost:4388/admin.html
 - 연습 모드(실제 데이터에 영향 없음): 주소 끝에 `?local` — 예: http://localhost:4388/admin.html?local
+  - 배포된 사이트에서도 똑같이 쓸 수 있습니다. 연습 내용은 그 브라우저에만 저장됩니다.
 
 ## 배포
 
