@@ -1,4 +1,4 @@
-import { look, fitText, fitAll, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1795446213';
+import { look, fitText, fitAll, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1795446372';
 
 const $ = (s) => document.querySelector(s);
 const grid = $('#grid');
@@ -1334,6 +1334,7 @@ async function enter() {
   editor.hidden = false;
   if (LOCAL) {
     $('#view').href = './?local';
+    $('#log-link').href = './log.html?local';
     $('#logout').hidden = true;
     status('로컬 연습 모드 — 실제 사이트에는 반영되지 않습니다');
     clearTimeout(statusTimer);

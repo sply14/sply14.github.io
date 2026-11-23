@@ -1,0 +1,179 @@
+/* 브랜드 로그 — 흑백. 색은 상품 누끼 사진 스티커에서만 나온다. */
+
+.log {
+  --g1: #d6d6d6;  /* 조금 한 날 */
+  --g2: #8f8f8f;  /* 꽤 한 날 */
+  --g3: #0a0a0a;  /* 많이 한 날 */
+  --line: #e4e4e4;
+  font-size: 12px;
+}
+
+.log a { color: inherit; }
+
+/* 상단 막대 (관리자 화면과 같은 모양, 강조색 없이) */
+.log .bar {
+  position: sticky; top: 0; z-index: 20;
+  height: 44px; padding: 0 var(--pad);
+  display: flex; align-items: center; gap: 18px;
+  background: var(--paper); border-bottom: 1px solid var(--ink);
+  font-size: 11px; font-weight: 700; letter-spacing: .03em; white-space: nowrap;
+}
+.log .bar strong { text-transform: uppercase; }
+.log .bar .spacer { flex: 1; }
+.log .bar a { text-decoration: none; }
+.log .bar button:hover, .log .bar a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.log .status { color: var(--mute); font-weight: 400; overflow: hidden; text-overflow: ellipsis; }
+
+/* 닫힌 창은 보이지 않게 (기본 스타일이 덮어쓰지 않도록) */
+.sheet:not([open]) { display: none; }
+
+/* 로그인 필요 */
+.gate { width: min(360px, 86vw); margin: 22vh auto 0; display: grid; gap: 14px; }
+.gate h1 { margin: 0; font-size: 44px; letter-spacing: -0.035em; line-height: .95; }
+.gate p { margin: 0; color: var(--mute); font-size: 14px; }
+.gate a { font-weight: 700; font-size: 13px; }
+
+/* ───────── 연간 달력 ───────── */
+
+.year-wrap { padding: 28px var(--pad) 60px; }
+.year-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px; }
+.year-head strong { font-family: "Barlow Condensed", var(--font); font-size: 34px; letter-spacing: -.01em; line-height: 1; }
+.year-head button { font-size: 12px; padding: 4px 2px; }
+.year-head button:disabled { opacity: .2; cursor: default; }
+.year-sum { color: var(--mute); margin-left: auto; }
+
+.year {
+  --cell: minmax(0, 1fr);
+  display: grid;
+  grid-template-columns: 3.2em repeat(31, var(--cell));
+  grid-template-rows: 1.6em repeat(12, auto);
+  gap: 2px;
+  position: relative;
+}
+.year.vertical {
+  grid-template-columns: 2.2em repeat(12, var(--cell));
+  grid-template-rows: 1.6em repeat(31, auto);
+}
+
+.year .head {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9px;
+  color: var(--mute);
+  display: flex; align-items: center; justify-content: center;
+}
+.year .head.month { justify-content: flex-start; font-weight: 700; color: var(--ink); letter-spacing: .04em; }
+.year.vertical .head.month { justify-content: center; }
+.year.vertical .head.day { justify-content: flex-end; padding-right: 6px; }
+
+.cell {
+  position: relative;
+  aspect-ratio: 1 / 1.15;
+  min-width: 0;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  overflow: hidden;
+  transition: background .25s, border-color .25s;
+}
+.year.vertical .cell { aspect-ratio: 1.6 / 1; }
+.cell.weekend { background: #fafafa; }
+.cell[data-level="rest"] { border-color: var(--ink); background: var(--paper); }
+.cell[data-level="1"] { background: var(--g1); border-color: var(--g1); }
+.cell[data-level="2"] { background: var(--g2); border-color: var(--g2); }
+.cell[data-level="3"] { background: var(--g3); border-color: var(--g3); }
+.cell.today { outline: 1.5px solid var(--ink); outline-offset: 1px; z-index: 1; }
+.cell.future { border-style: dashed; border-color: #efefef; background: none; }
+.cell:hover { border-color: var(--ink); }
+
+.cell .memo {
+  display: none;
+  position: absolute; inset: 2px 3px auto;
+  font-size: 8px; line-height: 1.15;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--ink); text-align: left;
+}
+.cell[data-level="2"] .memo, .cell[data-level="3"] .memo { color: var(--paper); }
+@media (min-width: 1200px) { .year:not(.vertical) .cell .memo { display: block; } }
+
+/* 칸이 아래에서 채워지는 애니메이션 */
+.cell.fill-in::after {
+  content: ""; position: absolute; inset: 0;
+  background: var(--ink);
+  transform-origin: bottom;
+  animation: fill-in .45s var(--ease) both;
+}
+@keyframes fill-in {
+  from { transform: scaleY(0); opacity: 1; }
+  70% { transform: scaleY(1); opacity: 1; }
+  to { transform: scaleY(1); opacity: 0; }
+}
+
+/* 며칠 이어진 작업 막대 */
+.bar-span {
+  align-self: center;
+  height: 26%;
+  margin: 0 18%;
+  background: var(--ink);
+  border: 1.5px solid var(--paper);
+  border-radius: 99px;
+  pointer-events: none;
+  z-index: 2;
+}
+.year.vertical .bar-span { justify-self: center; width: 26%; height: auto; margin: 18% 0; }
+
+/* 스티커: 칸보다 살짝 크게, 기울여서, 손으로 붙인 것처럼.
+   칸과 같은 비율로 만들어 줄 높이를 바꾸지 않는다. */
+.sticker {
+  position: relative;
+  z-index: 3;
+  pointer-events: none;
+  align-self: start;
+  width: 100%;
+  aspect-ratio: 1 / 1.15;
+  display: grid; place-items: center;
+  transform: translate(calc(var(--shift) - 10%), calc(var(--n) * -8%)) rotate(var(--tilt)) scale(1.25);
+}
+.year.vertical .sticker { aspect-ratio: 1.6 / 1; }
+.sticker img {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 0 #fff) drop-shadow(0 0 1px rgba(0, 0, 0, .35));
+}
+.sticker .name {
+  font-style: normal; font-size: 7px; font-weight: 700; line-height: 1.05;
+  background: var(--paper); border: 1px solid var(--ink);
+  padding: 1px 2px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sticker .tag {
+  position: absolute; right: -10%; bottom: -12%;
+  font-style: normal; font-family: "IBM Plex Mono", monospace; font-size: 7px; font-weight: 700;
+  background: var(--ink); color: var(--paper); padding: 0 2px; white-space: nowrap;
+}
+/* 레벨 별은 상품 사진을 가리지 않게 칸 오른쪽 위에 작게 */
+.sticker.star { transform: translate(38%, -34%) rotate(var(--tilt)) scale(.62); z-index: 4; }
+.sticker.star svg, .sticker.tier svg {
+  position: absolute; inset: 0; width: 100%; height: 100%; fill: var(--paper); stroke: var(--ink); stroke-width: 4; }
+.sticker.star b, .sticker.tier b {
+  position: absolute; font-family: "IBM Plex Mono", monospace; font-size: 6px; letter-spacing: -.02em;
+}
+.sticker.star b { display: none; }
+.sticker.tier { transform: translate(-10%, -10%) rotate(var(--tilt)) scale(2.1); z-index: 4; }
+.sticker.tier svg { fill: var(--ink); }
+.sticker.tier b { color: var(--paper); }
+
+.sticker.pop { animation: pop .38s var(--ease) both; }
+@keyframes pop {
+  from { opacity: 0; transform: translate(calc(var(--shift) - 10%), -40%) rotate(calc(var(--tilt) * 3)) scale(2.4); }
+  60% { opacity: 1; }
+}
+
+@media (max-width: 640px) {
+  .log .bar { gap: 12px; }
+  .year-head strong { font-size: 28px; }
+  .year { gap: 1px; }
+  .sticker .tag { font-size: 6px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sticker.pop, .cell.fill-in::after { animation: none; }
+}
