@@ -1,12 +1,11 @@
 // 연간 달력: 가로 1~31일 × 세로 1~12월 (폰 세로 화면에서는 가로 1~12월 × 세로 1~31일).
 // 칸 채우기(회색 단계), 며칠 이어진 작업 막대, 스티커(상품 누끼 사진만 컬러, 나머지 흑백)를 그립니다.
-import { h } from './common.js?v=1795447988';
-import { daysInMonth } from './log-dates.js?v=1795447988';
-import { cellLevel, spans, stickers } from './log-stats.js?v=1795447988';
+import { h } from './common.js?v=1795448926';
+import { daysInMonth } from './log-dates.js?v=1795448926';
+import { cellLevel, spans, stickers } from './log-stats.js?v=1795448926';
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 const pad = (n) => String(n).padStart(2, '0');
-const won = (n) => '₩' + Number(n).toLocaleString('ko-KR');
 
 // 뾰족한 별 (레퍼런스: 별 모양 날짜 포스터)
 export function starSvg(points = 12) {
@@ -73,30 +72,32 @@ export function renderYear(root, year, data, levels, opts) {
     }
   }
 
-  // 스티커
-  const perCell = new Map();
+  // 스티커: 한 칸에 하나. 사진은 칸 안에 맞춰 한 장만 보여 주고, 나머지는 "+N"으로. 칸을 누르면 상세 창에서 전부 보인다.
+  const byDate = new Map();
   for (const s of stickers(data, levels, `${year}-01-01`, `${year}-12-31`, opts.tiers)) {
     if (s.date > today) continue;
-    const m = Number(s.date.slice(5, 7)), d = Number(s.date.slice(8));
+    if (!byDate.has(s.date)) byDate.set(s.date, []);
+    byDate.get(s.date).push(s);
+  }
+  for (const [date, list] of byDate) {
+    const m = Number(date.slice(5, 7)), d = Number(date.slice(8));
     const p = place(vertical, m, d);
-    const n = perCell.get(s.date) ?? 0;
-    perCell.set(s.date, n + 1);
-    const tilt = ((s.seed % 1700) / 100 - 8.5).toFixed(1);
-    const shift = (n * 22) % 66;
+    const things = list.filter((s) => s.kind === 'product' || s.kind === 'sale');
+    const star = list.find((s) => s.kind === 'tier') || list.find((s) => s.kind === 'star');
+    const shown = things.find((s) => s.img) || things[0];
     const el = h('span', {
-      class: `sticker ${s.kind}`,
-      style: `grid-row:${p.row};grid-column:${p.col};--tilt:${tilt}deg;--shift:${shift}%;--n:${n}`,
-      'data-date': s.date,
+      class: 'sticker' + (star ? ` has-${star.kind}` : ''),
+      style: `grid-row:${p.row};grid-column:${p.col}`,
+      'data-date': date,
+      title: things.map((s) => s.label).join(', '),
     });
-    if (s.kind === 'star' || s.kind === 'tier') {
-      el.innerHTML = starSvg();
-      el.append(h('b', { text: s.label }));
-    } else if (s.img) {
-      el.append(h('img', { src: s.img, alt: s.label, loading: 'lazy', decoding: 'async' }));
-      if (s.kind === 'sale') el.append(h('i', { class: 'tag', text: won(s.amount) }));
-    } else {
-      el.append(h('i', { class: 'name', text: s.label }));
-      if (s.kind === 'sale') el.append(h('i', { class: 'tag', text: won(s.amount) }));
+    if (shown?.img) el.append(h('img', { src: shown.img, alt: shown.label, loading: 'lazy', decoding: 'async' }));
+    else if (shown) el.append(h('i', { class: 'name', text: shown.label }));
+    if (things.length > 1) el.append(h('i', { class: 'more', text: `+${things.length - 1}` }));
+    if (star) {
+      const mark = h('i', { class: `mark ${star.kind}` });
+      mark.innerHTML = starSvg();
+      el.append(mark);
     }
     root.append(el);
   }

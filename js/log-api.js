@@ -1,10 +1,10 @@
 // 브랜드 로그 데이터 계층. 실제(Supabase)와 연습 모드(?local, 이 브라우저에만 저장)가 같은 메서드를 가집니다.
-import { SUPABASE_URL, SUPABASE_KEY, TABLE, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1795447988';
-import { addDays, kstToday } from './log-dates.js?v=1795447988';
+import { SUPABASE_URL, SUPABASE_KEY, TABLE, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1795448926';
+import { addDays, kstToday } from './log-dates.js?v=1795448926';
 
 export const DEFAULT_CHANNELS = ['DM', '스마트스토어', '후르츠패밀리'];
 const pickItems = (rows) =>
-  rows.filter((r) => r.kind === 'product').map(({ id, name, thumb_url, image_url, kind }) => ({ id, name, thumb_url, image_url, kind }));
+  rows.filter((r) => r.kind === 'product').map(({ id, name, thumb_url, image_url, kind, hidden }) => ({ id, name, thumb_url, image_url, kind, hidden: !!hidden }));
 
 export async function createLogApi() {
   return LOCAL ? localApi() : remoteApi();
@@ -42,7 +42,7 @@ async function remoteApi() {
         all(() => sb.from('log_work').select('id,date,title,minutes,span_key,created_at').order('created_at')),
         all(() => sb.from('log_sales').select('id,date,item_id,title,channel,amount,qty,gift,created_at').order('created_at')),
         all(() => sb.from('catalog_events').select('item_id,event,at').order('id')),
-        all(() => sb.from(TABLE).select('id,name,thumb_url,image_url,kind')),
+        all(() => sb.from(TABLE).select('id,name,thumb_url,image_url,kind,hidden')),
         all(() => sb.from('log_options').select('key,value')),
       ]);
       const opt = Object.fromEntries(options.map((o) => [o.key, o.value]));

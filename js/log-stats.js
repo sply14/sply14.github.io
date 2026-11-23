@@ -1,8 +1,8 @@
 // 기록(LogData)에서 달력과 레벨 화면에 필요한 숫자를 계산합니다. DOM을 모르는 순수 함수만 있습니다.
 // LogData = { days: [{date}], work: [{date, title, minutes, span_key}], sales: [{date, item_id, title, channel, amount, qty, gift}],
 //             events: [{item_id, event, at}], items: [{id, name, thumb_url, image_url, kind}] }
-import { kstDateOf, addDays, diffDays } from './log-dates.js?v=1795447988';
-import { DEFAULT_METRICS, brandLevel, floor1, tierOf, TIERS } from './log-level.js?v=1795447988';
+import { kstDateOf, addDays, diffDays } from './log-dates.js?v=1795448926';
+import { DEFAULT_METRICS, brandLevel, floor1, tierOf, TIERS } from './log-level.js?v=1795448926';
 
 const saleValue = (s) => (s.gift ? 0 : (s.amount ?? 0) * (s.qty ?? 1));
 
@@ -204,6 +204,7 @@ export function stickers(data, levels, from, to, tiers = TIERS) {
   for (const d of dateRange(from, to)) {
     for (const id of addedOn(data.events, d)) {
       const item = ix.items.get(id);
+      if (item?.hidden) continue; // 지금 숨긴 상품은 달력에서도 뺀다
       out.push({ date: d, kind: 'product', item_id: id, img: item ? item.thumb_url || item.image_url || undefined : undefined, label: item ? item.name : '상품', seed: hash(d + id) });
     }
     for (const [i, s] of (ix.salesOn.get(d) ?? []).entries()) {

@@ -117,3 +117,18 @@ test('stickers show product photos on the day they were added and a star when th
   const star = list.find((s) => s.kind === 'star' || s.kind === 'tier');
   assert.ok(star, 'a level rise from 0 should add a star or tier sticker');
 });
+
+test('products that are hidden now get no photo sticker', () => {
+  const data = empty();
+  data.items = [
+    { id: 'a', name: '보임', thumb_url: 'a.png', image_url: '', kind: 'product', hidden: false },
+    { id: 'b', name: '숨김', thumb_url: 'b.png', image_url: '', kind: 'product', hidden: true },
+  ];
+  data.events = [
+    { item_id: 'a', event: 'added', at: kst('2026-11-24') },
+    { item_id: 'b', event: 'added', at: kst('2026-11-24') },
+  ];
+  const levels = levelByDate(data, '2026-11-23', '2026-11-24');
+  const photos = stickers(data, levels, '2026-11-24', '2026-11-24').filter((s) => s.kind === 'product');
+  assert.deepEqual(photos.map((s) => s.item_id), ['a']);
+});
