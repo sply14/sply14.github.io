@@ -1,26 +1,9 @@
 // 브랜드 로그 데이터 계층. 실제(Supabase)와 연습 모드(?local, 이 브라우저에만 저장)가 같은 메서드를 가집니다.
-import { SUPABASE_URL, SUPABASE_KEY, TABLE, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1795446898';
-import { normalizeParse, fakeParse } from './log-parse-local.js?v=1795446898';
-import { addDays, kstToday } from './log-dates.js?v=1795446898';
+import { SUPABASE_URL, SUPABASE_KEY, TABLE, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1795447392';
+import { fakeParse } from './log-parse-local.js?v=1795447392';
+import { addDays, kstToday } from './log-dates.js?v=1795447392';
 
 export const DEFAULT_CHANNELS = ['DM', '스마트스토어', '후르츠패밀리'];
-const PARSE_TIMEOUT = 15000;
-
-const withTimeout = (p, ms) =>
-  Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('AI 응답 시간 초과')), ms))]);
-
-// 최근 7일 안에 span_key가 있는 작업 (AI가 이어지는 작업이면 같은 key를 쓰도록)
-function openSpans(work, today) {
-  const since = addDays(today, -7);
-  const last = new Map();
-  for (const w of work) {
-    if (!w.span_key || w.date < since) continue;
-    const cur = last.get(w.span_key);
-    if (!cur || w.date > cur.last_date) last.set(w.span_key, { span_key: w.span_key, title: w.title, last_date: w.date });
-  }
-  return [...last.values()];
-}
-
 const pickItems = (rows) =>
   rows.filter((r) => r.kind === 'product').map(({ id, name, thumb_url, image_url, kind }) => ({ id, name, thumb_url, image_url, kind }));
 
@@ -69,17 +52,9 @@ async function remoteApi() {
     async entries(date) {
       return ok(await sb.from('log_entries').select('id,text,created_at').eq('date', date).order('created_at'));
     },
+    // AI 비용이 들지 않도록 웹에서는 규칙으로만 나눈다. 자유로운 문장은 Claude Code 세션에서 기록한다.
     async parse(text, ctx) {
-      const body = {
-        text,
-        today: ctx.today,
-        items: ctx.items.map(({ id, name }) => ({ id, name })),
-        channels: ctx.channels,
-        openSpans: openSpans(ctx.work, ctx.today),
-      };
-      const { data, error } = await withTimeout(sb.functions.invoke('log-parse', { body }), PARSE_TIMEOUT);
-      if (error) throw error;
-      return normalizeParse(data, ctx);
+      return fakeParse(text, ctx);
     },
     async save(draft) {
       ok(await sb.rpc('log_save_day', { payload: draft }));

@@ -1,6 +1,6 @@
 // 오늘의 기록: 평문을 쓰면 AI(연습 모드는 규칙)가 작업·판매로 나눠 확인 카드를 띄우고, 고친 뒤 저장한다.
-import { h } from './common.js?v=1795446898';
-import { addedOn } from './log-stats.js?v=1795446898';
+import { h } from './common.js?v=1795447392';
+import { addedOn } from './log-stats.js?v=1795447392';
 
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 const MINUTE_CHOICES = [[30, '30분'], [60, '1시간'], [120, '2시간'], [240, '반나절'], [480, '하루 종일']];
