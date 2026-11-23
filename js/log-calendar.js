@@ -1,8 +1,8 @@
 // 연간 달력: 가로 1~31일 × 세로 1~12월 (폰 세로 화면에서는 가로 1~12월 × 세로 1~31일).
 // 칸 채우기(회색 단계), 며칠 이어진 작업 막대, 스티커(상품 누끼 사진만 컬러, 나머지 흑백)를 그립니다.
-import { h } from './common.js?v=1795451899';
-import { daysInMonth } from './log-dates.js?v=1795451899';
-import { cellLevel, spans, stickers } from './log-stats.js?v=1795451899';
+import { h } from './common.js?v=1795452031';
+import { daysInMonth } from './log-dates.js?v=1795452031';
+import { cellLevel, spans, stickers } from './log-stats.js?v=1795452031';
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 const pad = (n) => String(n).padStart(2, '0');
@@ -101,6 +101,7 @@ export function renderYear(root, year, data, levels, opts) {
     }
     root.append(el);
   }
+  fitGrid(root, { cols: vertical ? 12 : 31, head: vertical ? 26 : 38 });
 }
 
 // 저장 직후: 그날 칸이 아래에서부터 채워지는 애니메이션. 끝나면 resolve.
@@ -127,4 +128,16 @@ export function popStickers(root, date) {
     el.classList.add('pop');
   });
   return new Promise((res) => setTimeout(res, list.length * 250 + 350));
+}
+
+// 칸 크기를 정수 픽셀로 맞춘다. 소수점 크기면 화면이 1px 단위로 반올림해서 칸마다 크기·테두리가 조금씩 달라 보인다.
+export function fitGrid(root, { cols, head = 0, max = 1200 }) {
+  const box = root.parentElement;
+  const cs = getComputedStyle(box);
+  const avail = Math.min(max, box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight));
+  const gap = parseFloat(getComputedStyle(root).columnGap) || 0;
+  const gaps = head ? cols : cols - 1;
+  const c = Math.max(8, Math.floor((avail - head - gap * gaps) / cols));
+  root.style.setProperty('--c', `${c}px`);
+  if (head) root.style.setProperty('--head', `${head}px`);
 }

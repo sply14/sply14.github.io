@@ -406,3 +406,8 @@
   .lv { grid-template-columns: 1fr; justify-items: center; text-align: center; }
   .lv-parts li { justify-content: center; }
 }
+
+/* 칸 크기는 JS(fitGrid)가 정수 픽셀로 정한다 (--c, --head). 값이 없을 때만 비율로. */
+.year { grid-template-columns: var(--head, 3.2em) repeat(31, var(--c, minmax(0, 1fr))); width: auto; max-width: none; }
+.year.vertical { grid-template-columns: var(--head, 2.2em) repeat(12, var(--c, minmax(0, 1fr))); }
+.view.month { grid-template-columns: repeat(7, var(--c, minmax(0, 1fr))); width: auto; }

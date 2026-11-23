@@ -1,12 +1,12 @@
 // 브랜드 로그 페이지 (관리자 전용). 평문 기록 → 연간 달력 → 브랜드 레벨.
-import { LOCAL } from './common.js?v=1795451899';
-import { kstToday, addDays, daysInMonth, weekStart, weekday } from './log-dates.js?v=1795451899';
-import { DEFAULT_METRICS, TIERS, floor1 } from './log-level.js?v=1795451899';
-import { levelByDate } from './log-stats.js?v=1795451899';
-import { createLogApi } from './log-api.js?v=1795451899';
-import { renderYear, highlightDay, popStickers } from './log-calendar.js?v=1795451899';
-import { drawLevel, drawRecords, openDay, openSettings, celebrate, levelAt } from './log-panels.js?v=1795451899';
-import { renderMonth, renderWeek, renderDay } from './log-views.js?v=1795451899';
+import { LOCAL } from './common.js?v=1795452031';
+import { kstToday, addDays, daysInMonth, weekStart, weekday } from './log-dates.js?v=1795452031';
+import { DEFAULT_METRICS, TIERS, floor1 } from './log-level.js?v=1795452031';
+import { levelByDate } from './log-stats.js?v=1795452031';
+import { createLogApi } from './log-api.js?v=1795452031';
+import { renderYear, highlightDay, popStickers } from './log-calendar.js?v=1795452031';
+import { drawLevel, drawRecords, openDay, openSettings, celebrate, levelAt } from './log-panels.js?v=1795452031';
+import { renderMonth, renderWeek, renderDay } from './log-views.js?v=1795452031';
 
 const $ = (s) => document.querySelector(s);
 const yearEl = $('#year');
@@ -169,6 +169,12 @@ async function start() {
     if (['year', 'month', 'week', 'day'].includes(saved)) state.view = saved;
   } catch { /* 기본은 연간 */ }
   narrow.addEventListener('change', drawYear);
+  // 창 크기가 바뀌면 칸 크기(정수 픽셀)를 다시 계산
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { if (state.view === 'year' || state.view === 'month') drawYear(); }, 150);
+  });
   $('#open-settings').onclick = () => openSettings($('#settings'), { api: state.api, data: state.data, onChanged: reload });
   await reload();
   await celebrateSinceLastVisit();
