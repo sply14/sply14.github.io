@@ -31,6 +31,11 @@ test('fakeParse splits work and a sale with item, channel and amount', () => {
   assert.equal(d.sales[0].mark_sold, true);
 });
 
+test('fakeParse links the item whose name matches the most words', () => {
+  const c = { ...ctx, items: [{ id: 's', name: 'Side Chair' }, { id: 'l', name: 'Lounge Chair' }] };
+  assert.equal(fakeParse('Lounge Chair 디엠으로 320만원에 판매', c).sales[0].item_id, 'l');
+});
+
 test('fakeParse reads "어제 쉼" as a rest day yesterday', () => {
   const d = fakeParse('어제 쉼', ctx);
   assert.equal(d.date, '2026-11-23');

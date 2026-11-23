@@ -1,8 +1,8 @@
 // 기록(LogData)에서 달력과 레벨 화면에 필요한 숫자를 계산합니다. DOM을 모르는 순수 함수만 있습니다.
 // LogData = { days: [{date}], work: [{date, title, minutes, span_key}], sales: [{date, item_id, title, channel, amount, qty, gift}],
 //             events: [{item_id, event, at}], items: [{id, name, thumb_url, image_url, kind}] }
-import { kstDateOf, addDays, diffDays } from './log-dates.js?v=1795446485';
-import { DEFAULT_METRICS, brandLevel, floor1, tierOf, TIERS } from './log-level.js?v=1795446485';
+import { kstDateOf, addDays, diffDays } from './log-dates.js?v=1795446759';
+import { DEFAULT_METRICS, brandLevel, floor1, tierOf, TIERS } from './log-level.js?v=1795446759';
 
 const saleValue = (s) => (s.gift ? 0 : (s.amount ?? 0) * (s.qty ?? 1));
 
@@ -118,7 +118,10 @@ export function levelByDate(data, from, to, metrics = DEFAULT_METRICS) {
   for (const d of dateRange(start, to)) {
     bestWorks = Math.max(bestWorks, s.portfolio.get(d) ?? 0);
     bestRevenue = Math.max(bestRevenue, s.revenue365.get(d) ?? 0);
-    if (d >= from) out.set(d, brandLevel({ works: bestWorks, revenue: bestRevenue, social: 0 }, metrics));
+    if (d >= from) {
+      const values = { works: bestWorks, revenue: bestRevenue, social: 0 };
+      out.set(d, { ...brandLevel(values, metrics), values });
+    }
   }
   return out;
 }

@@ -1,11 +1,12 @@
 // 브랜드 로그 페이지 (관리자 전용). 평문 기록 → 연간 달력 → 브랜드 레벨.
-import { LOCAL } from './common.js?v=1795446485';
-import { kstToday, addDays } from './log-dates.js?v=1795446485';
-import { DEFAULT_METRICS, TIERS } from './log-level.js?v=1795446485';
-import { levelByDate } from './log-stats.js?v=1795446485';
-import { createLogApi } from './log-api.js?v=1795446485';
-import { renderYear, highlightDay, popStickers } from './log-calendar.js?v=1795446485';
-import { mountEntry } from './log-entry.js?v=1795446485';
+import { LOCAL } from './common.js?v=1795446759';
+import { kstToday, addDays } from './log-dates.js?v=1795446759';
+import { DEFAULT_METRICS, TIERS, floor1 } from './log-level.js?v=1795446759';
+import { levelByDate } from './log-stats.js?v=1795446759';
+import { createLogApi } from './log-api.js?v=1795446759';
+import { renderYear, highlightDay, popStickers } from './log-calendar.js?v=1795446759';
+import { mountEntry } from './log-entry.js?v=1795446759';
+import { drawLevel, drawRecords, openDay, openSettings, celebrate, levelAt } from './log-panels.js?v=1795446759';
 
 const $ = (s) => document.querySelector(s);
 const yearEl = $('#year');
@@ -60,7 +61,15 @@ export function drawYear() {
     today: state.today,
     tiers: tiersOf(state.data.settings),
     firstTitle: firstTitleIndex(),
-    onPick: (date) => document.dispatchEvent(new CustomEvent('log:pick', { detail: date })),
+    onPick: (date) =>
+      openDay($('#day'), date, {
+        api: state.api,
+        data: state.data,
+        levels,
+        tiers: tiersOf(state.data.settings),
+        onChanged: reload,
+        onWrite: (d) => state.entry?.setDate(d),
+      }).catch((e) => status('불러오지 못했습니다: ' + (e.message || e))),
   });
   const y = String(state.year);
   const recorded = state.data.days.filter((d) => d.date.startsWith(y)).length;
@@ -70,7 +79,10 @@ export function drawYear() {
 
 export function drawAll() {
   drawYear();
-  document.dispatchEvent(new CustomEvent('log:draw'));
+  const metrics = metricsOf(state.data.settings);
+  const tiers = tiersOf(state.data.settings);
+  drawLevel($('#level'), { data: state.data, today: state.today, year: Number(state.today.slice(0, 4)), metrics, tiers });
+  drawRecords($('#records'), { data: state.data, today: state.today });
 }
 
 export async function reload() {
@@ -97,6 +109,7 @@ async function start() {
   $('#prev-year').onclick = () => { state.year -= 1; drawYear(); };
   $('#next-year').onclick = () => { state.year += 1; drawYear(); };
   narrow.addEventListener('change', drawYear);
+  $('#open-settings').onclick = () => openSettings($('#settings'), { api: state.api, data: state.data, onChanged: reload });
   await reload();
   state.entry = mountEntry($('#entry'), {
     api: state.api,
@@ -109,13 +122,21 @@ async function start() {
 /* ───────── 저장 뒤 ───────── */
 
 async function onSaved(draft) {
-  const before = state.data;
+  const metrics = metricsOf(state.data.settings);
+  const from = levelAt(state.data, state.today, metrics).total;
   await reload();
+  // 새로 그린 머리글은 이미 새 레벨이므로, 축하가 끝날 때까지 이전 숫자를 보여 준다
+  const num = $('#level .lv-num');
+  if (num) num.textContent = floor1(from).toFixed(1);
   const y = Number(draft.date.slice(0, 4));
   if (y !== state.year) { state.year = y; drawYear(); }
   await highlightDay(yearEl, draft.date);
   await popStickers(yearEl, draft.date);
-  document.dispatchEvent(new CustomEvent('log:saved', { detail: { draft, before } }));
+  await celebrate($('#level'), $('#burst'), {
+    from,
+    to: levelAt(state.data, state.today, metricsOf(state.data.settings)).total,
+    tiers: tiersOf(state.data.settings),
+  });
 }
 
 export { state };

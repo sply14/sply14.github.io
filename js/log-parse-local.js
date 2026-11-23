@@ -1,6 +1,6 @@
 // 평문 기록을 작업·판매로 나눈 결과(Draft)를 정리하고, 연습 모드(?local)에서는 AI 대신 간단한 규칙으로 나눕니다.
 // Draft = { date, rest, work: [{title, minutes, span_key}], sales: [{item_id, title, channel, amount, qty, gift, mark_sold}] }
-import { addDays } from './log-dates.js?v=1795446485';
+import { addDays } from './log-dates.js?v=1795446759';
 
 const isDateKey = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(Date.parse(s + 'T00:00:00Z'));
 const isCount = (n, max = Infinity) => Number.isInteger(n) && n >= 0 && n <= max;
@@ -84,8 +84,14 @@ function minutesOf(s) {
   return Math.round((h ? Number(h[1]) * 60 : 0) + (m ? Number(m[1]) : 0));
 }
 
+// 이름의 단어가 가장 많이 들어 있는 상품 (같으면 먼저 나온 것)
 function itemOf(s, items) {
-  return items.find((i) => i.name.split(/\s+/).some((w) => w.length >= 2 && s.includes(w))) || null;
+  let best = null, score = 0;
+  for (const i of items) {
+    const n = i.name.split(/\s+/).filter((w) => w.length >= 2 && s.includes(w)).length;
+    if (n > score) { best = i; score = n; }
+  }
+  return best;
 }
 
 function channelOf(s, channels) {

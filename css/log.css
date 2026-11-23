@@ -25,7 +25,7 @@
 .log .status { color: var(--mute); font-weight: 400; overflow: hidden; text-overflow: ellipsis; }
 
 /* 닫힌 창은 보이지 않게 (기본 스타일이 덮어쓰지 않도록) */
-.sheet:not([open]) { display: none; }
+.logsheet:not([open]) { display: none; }
 
 /* 로그인 필요 */
 .gate { width: min(360px, 86vw); margin: 22vh auto 0; display: grid; gap: 14px; }
@@ -222,3 +222,109 @@
 @media (max-width: 640px) {
   .confirm .row .k { width: 100%; }
 }
+
+/* ───────── 브랜드 레벨 ───────── */
+
+.lv {
+  display: grid; grid-template-columns: auto 1fr; gap: 6px 36px; align-items: end;
+  padding: 26px var(--pad) 22px; border-bottom: 1px solid var(--ink);
+}
+.lv-main { display: grid; }
+.lv-k { font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+.lv-num {
+  font-family: "Barlow Condensed", var(--font); font-weight: 700;
+  font-size: clamp(88px, 14vw, 168px); line-height: .82; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums;
+}
+.lv-num.tick { animation: tick .14s var(--ease); }
+@keyframes tick { from { transform: translateY(6%); opacity: .55; } }
+.lv-delta { font-family: "IBM Plex Mono", monospace; font-size: 13px; font-weight: 700; height: 1.2em; opacity: 0; transition: opacity .3s; }
+.lv-delta.show { opacity: 1; }
+.lv-side { display: grid; gap: 6px; max-width: 560px; padding-bottom: 6px; }
+.lv-side p { margin: 0; }
+.lv-tier { font-size: 15px; line-height: 1.35; }
+.lv-who, .lv-next, .lv-year { color: var(--mute); font-size: 12px; }
+.lv-parts { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 3px; }
+.lv-parts li { display: grid; grid-template-columns: 3em 4.6em 1fr; gap: 8px; font-size: 12px; align-items: baseline; }
+.lv-parts .k { color: var(--mute); font-weight: 700; font-size: 10px; letter-spacing: .05em; }
+.lv-parts b { font-family: "IBM Plex Mono", monospace; font-size: 12px; }
+.lv-parts .v { color: var(--mute); }
+
+@media (max-width: 640px) {
+  .lv { grid-template-columns: 1fr; }
+}
+
+/* ───────── 최고 기록 ───────── */
+
+.records {
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0; margin: 26px var(--pad) 0; border: 1px solid var(--ink);
+}
+.rec { display: grid; gap: 4px; padding: 12px 12px 11px; border-right: 1px solid var(--ink); min-width: 0; }
+.rec:last-child { border-right: 0; }
+.rec .k { font-size: 10px; font-weight: 700; letter-spacing: .05em; color: var(--mute); }
+.rec strong { font-family: "Barlow Condensed", var(--font); font-size: 26px; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rec .best { font-size: 11px; color: var(--mute); }
+.rec.broke { background: var(--ink); color: var(--paper); }
+.rec.broke .k, .rec.broke .best { color: var(--paper); }
+@media (max-width: 900px) {
+  .records { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .rec:nth-child(3) { border-right: 0; }
+  .rec:nth-child(-n+3) { border-bottom: 1px solid var(--ink); }
+}
+
+/* ───────── 창 (날짜 상세, 설정) ───────── */
+
+.logsheet {
+  width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 48px);
+  border: 1px solid var(--ink); border-radius: 0; padding: 0;
+  box-shadow: 6px 6px 0 var(--ink); color: var(--ink); background: var(--paper);
+  overflow: auto;
+}
+.logsheet::backdrop { background: rgba(255, 255, 255, .7); backdrop-filter: blur(3px); }
+.logsheet form { margin: 0; }
+.logsheet-head, .logsheet-foot { display: flex; align-items: center; gap: 10px; padding: 14px 18px; }
+.logsheet-head { border-bottom: 1px solid var(--ink); position: sticky; top: 0; background: var(--paper); z-index: 1; }
+.logsheet-head strong { font-size: 14px; }
+.logsheet-head .close { margin-left: auto; font-size: 12px; font-weight: 700; }
+.logsheet-foot { justify-content: flex-end; border-top: 1px solid var(--line); }
+.logsheet section { padding: 12px 18px 4px; }
+.logsheet h3 { margin: 0 0 8px; font-size: 10px; letter-spacing: .06em; color: var(--mute); }
+.logsheet .empty, .logsheet .hint { color: var(--mute); padding: 12px 18px 0; margin: 0; font-size: 12px; }
+.logsheet .hint { padding: 0 0 8px; }
+.logsheet button { font-size: 12px; font-weight: 700; padding: 8px 13px 7px; border: 1px solid var(--ink); }
+.logsheet button.primary { background: var(--ink); color: var(--paper); }
+.logsheet button.close, .logsheet button.x { border: 0; padding: 2px 4px; }
+.logsheet button.x { font-size: 16px; color: var(--mute); }
+.logsheet .raw { white-space: pre-wrap; margin: 0 0 8px; font-size: 14px; line-height: 1.5; padding-left: 10px; border-left: 2px solid var(--ink); }
+.day-list { list-style: none; margin: 0; padding: 0; }
+.day-list li { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+.day-list img { width: 28px; height: 28px; object-fit: contain; }
+.day-list .t { flex: 1; min-width: 0; }
+.day-list input { width: 7em; font: inherit; border: 0; border-bottom: 1px solid var(--ink); background: none; padding: 3px 0; outline: none; }
+.day-list .u { color: var(--mute); }
+.day-stickers { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 18px 0; align-items: center; }
+.day-stickers img { width: 48px; height: 48px; object-fit: contain; }
+.day-stickers .chip { border: 1px solid var(--ink); padding: 2px 6px; font-size: 11px; font-weight: 700; }
+.day-stickers .chip.star, .day-stickers .chip.tier { background: var(--ink); color: var(--paper); }
+
+.set { width: 100%; border-collapse: collapse; }
+.set th, .set td { padding: 4px 6px 4px 0; text-align: left; font-size: 11px; }
+.set th { font-weight: 700; color: var(--mute); white-space: nowrap; }
+.set input { width: 100%; font: inherit; font-size: 12px; border: 0; border-bottom: 1px solid var(--ink); background: none; padding: 3px 0; outline: none; }
+.logsheet textarea { width: 100%; font: inherit; font-size: 13px; border: 1px solid var(--ink); padding: 8px; }
+
+/* ───────── 단계가 바뀔 때 ───────── */
+
+.burst {
+  position: fixed; inset: 0; z-index: 50;
+  display: grid; place-items: center;
+  background: rgba(255, 255, 255, .82);
+}
+.burst-star { grid-area: 1 / 1; width: min(70vw, 460px); animation: burst .7s var(--ease) both; }
+.burst-star svg { width: 100%; fill: var(--ink); }
+.burst-text { grid-area: 1 / 1; position: relative; z-index: 1; display: grid; place-items: center; gap: 6px; color: var(--paper); text-align: center; max-width: min(46vw, 300px); }
+.burst-text b { font-family: "Barlow Condensed", var(--font); font-size: 64px; line-height: 1; }
+.burst-text span { font-size: 13px; line-height: 1.4; }
+@keyframes burst { from { transform: scale(.2) rotate(-40deg); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .burst-star, .lv-num.tick { animation: none; } }

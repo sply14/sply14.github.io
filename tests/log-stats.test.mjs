@@ -36,6 +36,8 @@ test('revenue level uses the best 365-day window and never goes down', () => {
   const dec31 = lv.get('2026-12-31').parts.revenue;
   assert.ok(nov24 > lv.get('2026-11-19').parts.revenue);
   assert.ok(dec31 >= nov24);
+  assert.equal(lv.get('2026-11-24').values.revenue, 1030000);
+  assert.equal(lv.get('2026-12-31').values.revenue, 1030000);
 });
 
 test('gift sales do not count as revenue', () => {
