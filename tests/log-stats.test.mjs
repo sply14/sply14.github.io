@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { portfolioByDate, addedOn, levelByDate, records, cellLevel, spans, stickers } from '../js/log-stats.js';
+import { portfolioByDate, addedOn, levelByDate, records, cellLevel, spans, stickers, daySummary } from '../js/log-stats.js';
 
 const kst = (date, hh = '12:00') => new Date(`${date}T${hh}:00+09:00`).toISOString();
 const empty = () => ({ days: [], work: [], sales: [], events: [], items: [] });
@@ -131,4 +131,24 @@ test('products that are hidden now get no photo sticker', () => {
   const levels = levelByDate(data, '2026-11-23', '2026-11-24');
   const photos = stickers(data, levels, '2026-11-24', '2026-11-24').filter((s) => s.kind === 'product');
   assert.deepEqual(photos.map((s) => s.item_id), ['a']);
+});
+
+test('daySummary totals one day of work and sales', () => {
+  const data = empty();
+  data.days = [{ date: '2026-11-24' }];
+  data.work = [
+    { date: '2026-11-24', title: '패턴', minutes: 120, span_key: null },
+    { date: '2026-11-24', title: '촬영', minutes: null, span_key: null },
+  ];
+  data.sales = [
+    { date: '2026-11-24', item_id: null, title: 'a', amount: 30000, qty: 2, gift: false },
+    { date: '2026-11-24', item_id: null, title: 'g', amount: 50000, qty: 1, gift: true },
+  ];
+  const s = daySummary(data, '2026-11-24');
+  assert.equal(s.recorded, true);
+  assert.equal(s.minutes, 120);
+  assert.equal(s.revenue, 60000);
+  assert.deepEqual(s.work.map((w) => w.title), ['패턴', '촬영']);
+  assert.equal(s.sales.length, 2);
+  assert.equal(daySummary(data, '2026-11-25').recorded, false);
 });

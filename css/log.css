@@ -281,3 +281,95 @@
 .burst-text span { font-size: 13px; line-height: 1.4; }
 @keyframes burst { from { transform: scale(.2) rotate(-40deg); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .burst-star, .lv-num.tick { animation: none; } }
+
+/* ───────── 보기 버튼 (연간·월간·주간·일간) ───────── */
+
+.views { display: inline-flex; border: 1px solid var(--ink); margin-bottom: 14px; }
+.views button { font-size: 11px; font-weight: 700; padding: 7px 14px 6px; border-right: 1px solid var(--ink); }
+.views button:last-child { border-right: 0; }
+.views button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
+.year-head .today-btn { font-size: 11px; font-weight: 700; border: 1px solid var(--ink); padding: 4px 8px 3px; }
+
+.view .mute, .view.week .mute { color: var(--mute); }
+.view .mark { position: absolute; right: 4px; top: 4px; width: 16px; aspect-ratio: 1; }
+.view .mark svg { width: 100%; height: 100%; fill: var(--paper); stroke: var(--ink); stroke-width: 6; display: block; }
+.view .mark.tier { width: 22px; }
+.view .mark.tier svg { fill: var(--ink); }
+
+/* 월간: 월요일 시작 7칸. 날짜는 원 (레퍼런스: 원형 날짜 포스터), 기록한 날은 원이 채워진다 */
+.view.month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; max-width: 920px; }
+.view.month .wd { font-size: 10px; font-weight: 700; letter-spacing: .05em; padding: 0 0 4px 4px; }
+.view.month .wd.we { color: var(--mute); }
+.mcell {
+  position: relative; min-width: 0; aspect-ratio: 1 / 1.05;
+  border: 1px solid var(--line); background: var(--paper);
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 6px; text-align: left; overflow: hidden;
+}
+.mcell:hover { border-color: var(--ink); }
+.mcell.today { outline: 1.5px solid var(--ink); outline-offset: 1px; }
+.mcell.future { border-style: dashed; border-color: #efefef; }
+.mcell .num {
+  width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--line);
+  display: grid; place-items: center; flex: none;
+  font-family: "IBM Plex Mono", monospace; font-size: 11px; font-weight: 700;
+}
+.mcell[data-level="rest"] .num { border-color: var(--ink); }
+.mcell[data-level="1"] .num { background: var(--g1); border-color: var(--g1); }
+.mcell[data-level="2"] .num { background: var(--g2); border-color: var(--g2); color: var(--paper); }
+.mcell[data-level="3"] .num { background: var(--g3); border-color: var(--g3); color: var(--paper); }
+.mcell img { position: absolute; inset: 30% 14% 22%; width: 72%; height: 48%; object-fit: contain; }
+.mcell .more { position: absolute; right: 4px; bottom: 4px; font-style: normal; font-family: "IBM Plex Mono", monospace; font-size: 9px; font-weight: 700; background: var(--ink); color: var(--paper); padding: 1px 3px; }
+.mcell .line { position: relative; z-index: 1; max-width: 100%; font-size: 10px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: auto; }
+.mcell .line + .line { margin-top: 0; }
+.mcell .line.won { font-family: "IBM Plex Mono", monospace; font-weight: 700; }
+.mcell .line.mute { color: var(--mute); }
+
+/* 주간: 하루 한 줄 */
+.view.week { display: grid; border-top: 1px solid var(--ink); }
+.wrow {
+  position: relative; display: grid; grid-template-columns: 7em 1fr auto; gap: 14px; align-items: start;
+  text-align: left; padding: 12px 4px; border-bottom: 1px solid var(--line);
+}
+.wrow:hover { background: #fafafa; }
+.wrow.today .day b { text-decoration: underline; text-underline-offset: 4px; }
+.wrow.future { opacity: .45; }
+.wrow .day { position: relative; display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.wrow .day .mark { position: static; }
+.wrow ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-size: 13px; }
+.wrow li.sale { font-family: "IBM Plex Mono", monospace; font-size: 12px; }
+.wrow .pics { display: flex; gap: 6px; }
+.wrow .pics img { width: 44px; height: 44px; object-fit: contain; }
+
+/* 일간: 그날 하루를 크게 */
+.view.day { max-width: 760px; display: grid; gap: 18px; }
+.day-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 14px; }
+.day-lv { font-family: "Barlow Condensed", var(--font); font-size: 28px; font-weight: 700; }
+.day-top .edit { margin-left: auto; font-size: 11px; font-weight: 700; border: 1px solid var(--ink); padding: 6px 10px 5px; }
+.day-pics { display: flex; flex-wrap: wrap; gap: 12px; }
+.day-pics figure { margin: 0; width: 140px; display: grid; gap: 4px; }
+.day-pics img { width: 140px; height: 140px; object-fit: contain; border: 1px solid var(--line); }
+.day-pics figure.noimg { height: 140px; place-items: center; border: 1px solid var(--line); }
+.day-pics figcaption { font-size: 11px; }
+.view.day h3 { margin: 0 0 6px; font-size: 10px; letter-spacing: .06em; color: var(--mute); }
+.view.day ul { margin: 0; padding-left: 18px; font-size: 14px; line-height: 1.6; }
+.view.day .raw { white-space: pre-wrap; margin: 0 0 8px; font-size: 15px; line-height: 1.55; padding-left: 10px; border-left: 2px solid var(--ink); }
+
+@media (max-width: 640px) {
+  .views button { padding: 7px 10px 6px; }
+  .view.month { gap: 2px; }
+  .mcell { padding: 3px; }
+  .mcell .num { width: 20px; height: 20px; font-size: 9px; }
+  .mcell .line { display: none; }
+  .wrow { grid-template-columns: 5.5em 1fr; }
+  .wrow .pics { grid-column: 2; }
+  .day-pics figure, .day-pics img { width: 100px; }
+  .day-pics img, .day-pics figure.noimg { height: 100px; }
+}
+
+/* 보기 머리: 이름은 한 줄로, 좁은 화면에서는 합계를 아랫줄로 */
+.year-head { flex-wrap: wrap; row-gap: 6px; }
+#year-label { white-space: nowrap; }
+@media (max-width: 640px) {
+  .year-sum { width: 100%; margin-left: 0; }
+}

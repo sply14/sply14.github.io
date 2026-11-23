@@ -37,3 +37,24 @@ export function yearDates(year) {
   for (let d = `${year}-01-01`; d.startsWith(String(year)); d = addDays(d, 1)) out.push(d);
   return out;
 }
+
+// 0 = 월요일 … 6 = 일요일
+export function weekday(date) {
+  return (toDate(date).getUTCDay() + 6) % 7;
+}
+
+// 그 주의 월요일
+export function weekStart(date) {
+  return addDays(date, -weekday(date));
+}
+
+// 한 달을 월요일 시작 주 단위로. 달에 속하지 않는 칸은 null.
+export function monthWeeks(year, month) {
+  const first = `${year}-${pad(month)}-01`;
+  const cells = Array(weekday(first)).fill(null);
+  for (let d = 1; d <= daysInMonth(year, month); d++) cells.push(`${year}-${pad(month)}-${pad(d)}`);
+  while (cells.length % 7) cells.push(null);
+  const weeks = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  return weeks;
+}

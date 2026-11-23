@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,400;0,700;1,400;1,700&family=IBM+Plex+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=1795448926">
-  <link rel="stylesheet" href="css/log.css?v=1795448926">
+  <link rel="stylesheet" href="css/style.css?v=1795449293">
+  <link rel="stylesheet" href="css/log.css?v=1795449293">
 </head>
 <body class="log">
 
@@ -41,10 +41,17 @@
 
     <!-- 연간 달력 -->
     <section class="year-wrap">
+      <div class="views" role="group" aria-label="보기">
+        <button type="button" data-view="year">연간</button>
+        <button type="button" data-view="month">월간</button>
+        <button type="button" data-view="week">주간</button>
+        <button type="button" data-view="day">일간</button>
+      </div>
       <div class="year-head">
-        <button id="prev-year" type="button" aria-label="이전 해">◀</button>
+        <button id="prev-year" type="button" aria-label="이전">◀</button>
         <strong id="year-label"></strong>
-        <button id="next-year" type="button" aria-label="다음 해">▶</button>
+        <button id="next-year" type="button" aria-label="다음">▶</button>
+        <button id="go-today" type="button" class="today-btn">오늘</button>
         <span id="year-sum" class="year-sum"></span>
       </div>
       <div id="year" class="year"></div>
@@ -60,6 +67,6 @@
   <!-- 단계가 바뀔 때의 큰 축하 -->
   <div id="burst" class="burst" hidden></div>
 
-  <script type="module" src="js/log.js?v=1795448926"></script>
+  <script type="module" src="js/log.js?v=1795449293"></script>
 </body>
 </html>

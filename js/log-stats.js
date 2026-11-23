@@ -1,8 +1,8 @@
 // 기록(LogData)에서 달력과 레벨 화면에 필요한 숫자를 계산합니다. DOM을 모르는 순수 함수만 있습니다.
 // LogData = { days: [{date}], work: [{date, title, minutes, span_key}], sales: [{date, item_id, title, channel, amount, qty, gift}],
 //             events: [{item_id, event, at}], items: [{id, name, thumb_url, image_url, kind}] }
-import { kstDateOf, addDays, diffDays } from './log-dates.js?v=1795448926';
-import { DEFAULT_METRICS, brandLevel, floor1, tierOf, TIERS } from './log-level.js?v=1795448926';
+import { kstDateOf, addDays, diffDays } from './log-dates.js?v=1795449293';
+import { DEFAULT_METRICS, brandLevel, floor1, tierOf, TIERS } from './log-level.js?v=1795449293';
 
 const saleValue = (s) => (s.gift ? 0 : (s.amount ?? 0) * (s.qty ?? 1));
 
@@ -220,4 +220,20 @@ export function stickers(data, levels, from, to, tiers = TIERS) {
     }
   }
   return out;
+}
+
+// 하루 요약 (월간·주간·일간 보기용)
+export function daySummary(data, date) {
+  const ix = index(data);
+  const work = ix.workOn.get(date) ?? [];
+  const sales = ix.salesOn.get(date) ?? [];
+  return {
+    date,
+    recorded: ix.days.has(date),
+    minutes: ix.minutes.get(date) ?? 0,
+    revenue: ix.revenue.get(date) ?? 0,
+    work,
+    sales,
+    level: cellLevel(date, data),
+  };
 }
