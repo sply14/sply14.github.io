@@ -2,5 +2,5 @@
 # CSS/JS/HTML이 커밋에 포함되면 버전 번호를 자동으로 갱신해 함께 커밋한다 (브라우저가 옛 파일을 캐시에서 쓰지 않도록).
 if git diff --cached --name-only | grep -qE '\.(css|js|html)$'; then
   python3 tools/bump.py >/dev/null || exit 1
-  git add index.html admin.html js/*.js
+  git add *.html js/*.js
 fi
