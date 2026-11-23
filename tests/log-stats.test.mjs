@@ -57,6 +57,15 @@ test('cellLevel separates no record, rest, and work intensity', () => {
   assert.equal(cellLevel('2026-11-02', data), 2);
 });
 
+test('a day with work of unknown length or only a sale is filled, not a rest day', () => {
+  const data = empty();
+  data.days = [{ date: '2026-11-03' }, { date: '2026-11-04' }];
+  data.work = [{ date: '2026-11-03', title: '패턴 수정', minutes: null, span_key: null }];
+  data.sales = [{ date: '2026-11-04', item_id: null, title: 'x', amount: 30000, qty: 1, gift: false }];
+  assert.equal(cellLevel('2026-11-03', data), 1);
+  assert.equal(cellLevel('2026-11-04', data), 1);
+});
+
 test('streak counts back from today, or from yesterday if today is empty', () => {
   const data = empty();
   data.days = ['2026-11-20', '2026-11-22', '2026-11-23', '2026-11-24'].map((date) => ({ date }));

@@ -1,12 +1,12 @@
 // 브랜드 로그 페이지 (관리자 전용). 평문 기록 → 연간 달력 → 브랜드 레벨.
-import { LOCAL } from './common.js?v=1795446759';
-import { kstToday, addDays } from './log-dates.js?v=1795446759';
-import { DEFAULT_METRICS, TIERS, floor1 } from './log-level.js?v=1795446759';
-import { levelByDate } from './log-stats.js?v=1795446759';
-import { createLogApi } from './log-api.js?v=1795446759';
-import { renderYear, highlightDay, popStickers } from './log-calendar.js?v=1795446759';
-import { mountEntry } from './log-entry.js?v=1795446759';
-import { drawLevel, drawRecords, openDay, openSettings, celebrate, levelAt } from './log-panels.js?v=1795446759';
+import { LOCAL } from './common.js?v=1795446898';
+import { kstToday, addDays } from './log-dates.js?v=1795446898';
+import { DEFAULT_METRICS, TIERS, floor1 } from './log-level.js?v=1795446898';
+import { levelByDate } from './log-stats.js?v=1795446898';
+import { createLogApi } from './log-api.js?v=1795446898';
+import { renderYear, highlightDay, popStickers } from './log-calendar.js?v=1795446898';
+import { mountEntry } from './log-entry.js?v=1795446898';
+import { drawLevel, drawRecords, openDay, openSettings, celebrate, levelAt } from './log-panels.js?v=1795446898';
 
 const $ = (s) => document.querySelector(s);
 const yearEl = $('#year');
@@ -114,9 +114,15 @@ async function start() {
   state.entry = mountEntry($('#entry'), {
     api: state.api,
     getData: () => state.data,
-    today: () => state.today,
+    today: () => kstToday(),
     onSaved,
   });
+  // 페이지를 켜 둔 채 자정이 지나면, 다시 볼 때 오늘을 새로 잡는다
+  const ensureToday = () => {
+    if (document.visibilityState === 'visible' && kstToday() !== state.today) reload().then(() => state.entry?.refresh());
+  };
+  document.addEventListener('visibilitychange', ensureToday);
+  window.addEventListener('focus', ensureToday);
 }
 
 /* ───────── 저장 뒤 ───────── */

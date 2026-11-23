@@ -1,6 +1,6 @@
 // 오늘의 기록: 평문을 쓰면 AI(연습 모드는 규칙)가 작업·판매로 나눠 확인 카드를 띄우고, 고친 뒤 저장한다.
-import { h } from './common.js?v=1795446759';
-import { addedOn } from './log-stats.js?v=1795446759';
+import { h } from './common.js?v=1795446898';
+import { addedOn } from './log-stats.js?v=1795446898';
 
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 const MINUTE_CHOICES = [[30, '30분'], [60, '1시간'], [120, '2시간'], [240, '반나절'], [480, '하루 종일']];
@@ -15,7 +15,8 @@ const emptyWork = () => ({ title: '', minutes: null, span_key: null });
 const emptySale = () => ({ item_id: null, title: '', channel: null, amount: null, qty: 1, gift: false, mark_sold: false });
 
 export function mountEntry(root, ctx) {
-  let date = ctx.today();      // 글을 쓰는 날짜 (날짜 상세에서 "이 날에 더 쓰기"로 바꿀 수 있음)
+  let date = null;             // 글을 쓰는 날짜. null이면 '오늘'을 따라간다 (자정이 지나면 자동으로 다음 날)
+  const cur = () => date ?? ctx.today();
   let text = '';
   let draft = null;
   let busy = false;
@@ -33,11 +34,11 @@ export function mountEntry(root, ctx) {
     ta.oninput = () => (text = ta.value);
     ta.onkeydown = (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(); };
     const btn = h('button', { type: 'button', class: 'primary', onclick: submit, disabled: busy }, busy ? '읽는 중…' : '기록하기');
-    const isToday = date === ctx.today();
+    const isToday = cur() === ctx.today();
     return h('div', { class: 'write' },
       h('div', { class: 'entry-head' },
-        h('strong', { text: isToday ? `오늘 (${label(date)})` : label(date) }),
-        isToday ? null : h('button', { type: 'button', class: 'link', onclick: () => { date = ctx.today(); render(); } }, '오늘로'),
+        h('strong', { text: isToday ? `오늘 (${label(cur())})` : label(cur()) }),
+        isToday ? null : h('button', { type: 'button', class: 'link', onclick: () => { date = null; render(); } }, '오늘로'),
       ),
       ta,
       h('div', { class: 'entry-foot' }, note ? h('span', { class: 'note', text: note }) : h('span'), btn),
@@ -51,13 +52,13 @@ export function mountEntry(root, ctx) {
     note = '';
     render();
     const data = ctx.getData();
-    const pctx = { today: date, items: data.items, channels: data.channels, work: data.work };
+    const pctx = { today: cur(), items: data.items, channels: data.channels, work: data.work };
     try {
       draft = await ctx.api.parse(text, pctx);
     } catch (err) {
       console.warn('parse failed', err);
       note = 'AI가 응답하지 않았어. 직접 채워 줘';
-      draft = { date, rest: false, work: [emptyWork()], sales: [] };
+      draft = { date: cur(), rest: false, work: [emptyWork()], sales: [] };
     }
     busy = false;
     render();
@@ -165,7 +166,7 @@ export function mountEntry(root, ctx) {
       draft = null;
       note = '';
       busy = false;
-      date = ctx.today();
+      date = null;
       render();
       ctx.onSaved(saved);
     } catch (err) {
@@ -178,7 +179,7 @@ export function mountEntry(root, ctx) {
 
   render();
   return {
-    setDate(d) { date = d; draft = null; render(); root.scrollIntoView({ behavior: 'smooth', block: 'start' }); root.querySelector('textarea')?.focus(); },
+    setDate(d) { date = d === ctx.today() ? null : d; draft = null; render(); root.scrollIntoView({ behavior: 'smooth', block: 'start' }); root.querySelector('textarea')?.focus(); },
     refresh: render,
   };
 }
