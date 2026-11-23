@@ -1,10 +1,11 @@
 // 브랜드 로그 페이지 (관리자 전용). 평문 기록 → 연간 달력 → 브랜드 레벨.
-import { LOCAL } from './common.js?v=1795446372';
-import { kstToday, addDays } from './log-dates.js?v=1795446372';
-import { DEFAULT_METRICS, TIERS } from './log-level.js?v=1795446372';
-import { levelByDate } from './log-stats.js?v=1795446372';
-import { createLogApi } from './log-api.js?v=1795446372';
-import { renderYear } from './log-calendar.js?v=1795446372';
+import { LOCAL } from './common.js?v=1795446485';
+import { kstToday, addDays } from './log-dates.js?v=1795446485';
+import { DEFAULT_METRICS, TIERS } from './log-level.js?v=1795446485';
+import { levelByDate } from './log-stats.js?v=1795446485';
+import { createLogApi } from './log-api.js?v=1795446485';
+import { renderYear, highlightDay, popStickers } from './log-calendar.js?v=1795446485';
+import { mountEntry } from './log-entry.js?v=1795446485';
 
 const $ = (s) => document.querySelector(s);
 const yearEl = $('#year');
@@ -97,6 +98,24 @@ async function start() {
   $('#next-year').onclick = () => { state.year += 1; drawYear(); };
   narrow.addEventListener('change', drawYear);
   await reload();
+  state.entry = mountEntry($('#entry'), {
+    api: state.api,
+    getData: () => state.data,
+    today: () => state.today,
+    onSaved,
+  });
+}
+
+/* ───────── 저장 뒤 ───────── */
+
+async function onSaved(draft) {
+  const before = state.data;
+  await reload();
+  const y = Number(draft.date.slice(0, 4));
+  if (y !== state.year) { state.year = y; drawYear(); }
+  await highlightDay(yearEl, draft.date);
+  await popStickers(yearEl, draft.date);
+  document.dispatchEvent(new CustomEvent('log:saved', { detail: { draft, before } }));
 }
 
 export { state };
