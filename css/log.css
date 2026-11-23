@@ -178,50 +178,9 @@
   .sticker.pop, .cell.fill-in::after { animation: none; }
 }
 
-/* ───────── 오늘의 기록 ───────── */
+/* ───────── 기록 안내 ───────── */
 
-.entry { padding: 22px var(--pad) 0; max-width: 760px; }
-.entry-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; }
-.entry-head strong { font-size: 13px; letter-spacing: .02em; }
-.entry textarea {
-  width: 100%; min-height: 96px;
-  font: inherit; font-size: 15px; line-height: 1.5; color: inherit;
-  border: 1px solid var(--ink); border-radius: 0; padding: 12px 14px;
-  background: var(--paper); resize: vertical; outline: none;
-}
-.entry textarea:focus { box-shadow: 3px 3px 0 var(--ink); }
-.entry-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; }
-.entry button { font-size: 12px; font-weight: 700; padding: 9px 14px 8px; border: 1px solid var(--ink); }
-.entry button.primary { background: var(--ink); color: var(--paper); margin-left: auto; }
-.entry button.primary:disabled { opacity: .45; cursor: progress; }
-.entry button.link { border: 0; padding: 4px 0; text-decoration: underline; text-underline-offset: 3px; font-weight: 400; }
-.entry button.x { border: 0; padding: 2px 6px; font-size: 16px; line-height: 1; margin-left: auto; color: var(--mute); }
-.entry button.x:hover { color: var(--ink); }
-.entry .note { color: var(--mute); font-size: 12px; }
-
-.confirm { border: 1px solid var(--ink); padding: 14px 16px 14px; box-shadow: 4px 4px 0 var(--ink); background: var(--paper); }
-.confirm .rows { display: grid; gap: 0; border-top: 1px solid var(--ink); }
-.confirm .row {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
-  padding: 9px 0; border-bottom: 1px solid var(--line);
-}
-.confirm .row .k { width: 3em; font-size: 10px; font-weight: 700; letter-spacing: .05em; color: var(--mute); }
-.confirm .row.auto, .confirm .row.rest { color: var(--ink); }
-.confirm input[type="text"], .confirm input[type="number"], .confirm input[type="date"], .confirm select {
-  font: inherit; font-size: 13px; color: inherit;
-  border: 0; border-bottom: 1px solid var(--ink); border-radius: 0; background: none;
-  padding: 4px 0; outline: none; min-width: 0;
-}
-.confirm input[type="text"] { flex: 1 1 180px; }
-.confirm input[type="number"] { width: 7.5em; }
-.confirm input.qty { width: 3.5em; }
-.confirm select { max-width: 13em; }
-.confirm .check { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
-.confirm .adders { display: flex; gap: 16px; margin-top: 8px; }
-
-@media (max-width: 640px) {
-  .confirm .row .k { width: 100%; }
-}
+.entry-hint { margin: 18px var(--pad) 0; color: var(--mute); font-size: 12px; }
 
 /* ───────── 브랜드 레벨 ───────── */
 

@@ -1,12 +1,11 @@
 // 브랜드 로그 페이지 (관리자 전용). 평문 기록 → 연간 달력 → 브랜드 레벨.
-import { LOCAL } from './common.js?v=1795447419';
-import { kstToday, addDays } from './log-dates.js?v=1795447419';
-import { DEFAULT_METRICS, TIERS, floor1 } from './log-level.js?v=1795447419';
-import { levelByDate } from './log-stats.js?v=1795447419';
-import { createLogApi } from './log-api.js?v=1795447419';
-import { renderYear, highlightDay, popStickers } from './log-calendar.js?v=1795447419';
-import { mountEntry } from './log-entry.js?v=1795447419';
-import { drawLevel, drawRecords, openDay, openSettings, celebrate, levelAt } from './log-panels.js?v=1795447419';
+import { LOCAL } from './common.js?v=1795447988';
+import { kstToday, addDays } from './log-dates.js?v=1795447988';
+import { DEFAULT_METRICS, TIERS, floor1 } from './log-level.js?v=1795447988';
+import { levelByDate } from './log-stats.js?v=1795447988';
+import { createLogApi } from './log-api.js?v=1795447988';
+import { renderYear, highlightDay, popStickers } from './log-calendar.js?v=1795447988';
+import { drawLevel, drawRecords, openDay, openSettings, celebrate, levelAt } from './log-panels.js?v=1795447988';
 
 const $ = (s) => document.querySelector(s);
 const yearEl = $('#year');
@@ -68,7 +67,6 @@ export function drawYear() {
         levels,
         tiers: tiersOf(state.data.settings),
         onChanged: reload,
-        onWrite: (d) => state.entry?.setDate(d),
       }).catch((e) => status('불러오지 못했습니다: ' + (e.message || e))),
   });
   const y = String(state.year);
@@ -111,38 +109,35 @@ async function start() {
   narrow.addEventListener('change', drawYear);
   $('#open-settings').onclick = () => openSettings($('#settings'), { api: state.api, data: state.data, onChanged: reload });
   await reload();
-  state.entry = mountEntry($('#entry'), {
-    api: state.api,
-    getData: () => state.data,
-    today: () => kstToday(),
-    onSaved,
-  });
+  await celebrateSinceLastVisit();
   // 페이지를 켜 둔 채 자정이 지나면, 다시 볼 때 오늘을 새로 잡는다
   const ensureToday = () => {
-    if (document.visibilityState === 'visible' && kstToday() !== state.today) reload().then(() => state.entry?.refresh());
+    if (document.visibilityState === 'visible' && kstToday() !== state.today) reload();
   };
   document.addEventListener('visibilitychange', ensureToday);
   window.addEventListener('focus', ensureToday);
 }
 
-/* ───────── 저장 뒤 ───────── */
+/* ───────── 지난번보다 레벨이 올랐으면 축하 ───────── */
 
-async function onSaved(draft) {
+// 기록은 Claude Code 세션에서 하므로, 웹을 열었을 때 이 브라우저에서 지난번 본 레벨보다 올랐으면 그 순간을 보여 준다.
+const SEEN_KEY = 'brand-log-seen-v1';
+
+async function celebrateSinceLastVisit() {
   const metrics = metricsOf(state.data.settings);
-  const from = levelAt(state.data, state.today, metrics).total;
-  await reload();
-  // 새로 그린 머리글은 이미 새 레벨이므로, 축하가 끝날 때까지 이전 숫자를 보여 준다
+  const now = levelAt(state.data, state.today, metrics).total;
+  let seen = null;
+  try { seen = JSON.parse(localStorage.getItem(SEEN_KEY)); } catch { seen = null; }
+  try { localStorage.setItem(SEEN_KEY, JSON.stringify({ level: now, date: state.today })); } catch { /* 저장소를 못 쓰면 축하만 건너뜀 */ }
+  if (!seen || typeof seen.level !== 'number' || floor1(now) <= floor1(seen.level)) return;
+
   const num = $('#level .lv-num');
-  if (num) num.textContent = floor1(from).toFixed(1);
-  const y = Number(draft.date.slice(0, 4));
-  if (y !== state.year) { state.year = y; drawYear(); }
-  await highlightDay(yearEl, draft.date);
-  await popStickers(yearEl, draft.date);
-  await celebrate($('#level'), $('#burst'), {
-    from,
-    to: levelAt(state.data, state.today, metricsOf(state.data.settings)).total,
-    tiers: tiersOf(state.data.settings),
-  });
+  if (num) num.textContent = floor1(seen.level).toFixed(1);
+  if (state.data.days.some((d) => d.date === state.today)) {
+    await highlightDay(yearEl, state.today);
+    await popStickers(yearEl, state.today);
+  }
+  await celebrate($('#level'), $('#burst'), { from: seen.level, to: now, tiers: tiersOf(state.data.settings) });
 }
 
 export { state };

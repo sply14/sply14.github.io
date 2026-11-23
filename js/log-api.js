@@ -1,7 +1,6 @@
 // 브랜드 로그 데이터 계층. 실제(Supabase)와 연습 모드(?local, 이 브라우저에만 저장)가 같은 메서드를 가집니다.
-import { SUPABASE_URL, SUPABASE_KEY, TABLE, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1795447419';
-import { fakeParse } from './log-parse-local.js?v=1795447419';
-import { addDays, kstToday } from './log-dates.js?v=1795447419';
+import { SUPABASE_URL, SUPABASE_KEY, TABLE, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1795447988';
+import { addDays, kstToday } from './log-dates.js?v=1795447988';
 
 export const DEFAULT_CHANNELS = ['DM', '스마트스토어', '후르츠패밀리'];
 const pickItems = (rows) =>
@@ -51,10 +50,6 @@ async function remoteApi() {
     },
     async entries(date) {
       return ok(await sb.from('log_entries').select('id,text,created_at').eq('date', date).order('created_at'));
-    },
-    // AI 비용이 들지 않도록 웹에서는 규칙으로만 나눈다. 자유로운 문장은 Claude Code 세션에서 기록한다.
-    async parse(text, ctx) {
-      return fakeParse(text, ctx);
     },
     async save(draft) {
       ok(await sb.rpc('log_save_day', { payload: draft }));
@@ -121,10 +116,6 @@ async function localApi() {
     },
     async entries(date) {
       return structuredClone(db.entries.filter((e) => e.date === date));
-    },
-    async parse(text, ctx) {
-      await new Promise((r) => setTimeout(r, 300));
-      return fakeParse(text, ctx);
     },
     async save(draft) {
       const now = new Date().toISOString();

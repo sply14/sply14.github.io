@@ -1,8 +1,8 @@
 // 레벨 머리글, 최고 기록 카드, 날짜 상세, 설정, 저장 뒤 축하.
-import { h } from './common.js?v=1795447419';
-import { addDays } from './log-dates.js?v=1795447419';
-import { DEFAULT_METRICS, TIERS, floor1, tierOf, nextTier } from './log-level.js?v=1795447419';
-import { levelByDate, records, stickers } from './log-stats.js?v=1795447419';
+import { h } from './common.js?v=1795447988';
+import { addDays } from './log-dates.js?v=1795447988';
+import { DEFAULT_METRICS, TIERS, floor1, tierOf, nextTier } from './log-level.js?v=1795447988';
+import { levelByDate, records, stickers } from './log-stats.js?v=1795447988';
 
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 const won = (n) => '₩' + Math.round(n).toLocaleString('ko-KR');
@@ -73,7 +73,7 @@ export function drawRecords(root, { data, today }) {
 
 /* ───────── 날짜 상세 ───────── */
 
-export async function openDay(dialog, date, { api, data, levels, tiers, onChanged, onWrite }) {
+export async function openDay(dialog, date, { api, data, levels, tiers, onChanged }) {
   const entries = await api.entries(date);
   const work = data.work.filter((w) => w.date === date);
   const sales = data.sales.filter((s) => s.date === date);
@@ -104,15 +104,13 @@ export async function openDay(dialog, date, { api, data, levels, tiers, onChange
     h('div', { class: 'logsheet-head' },
       h('strong', { text: dayLabel(date) }),
       h('button', { type: 'button', class: 'close', onclick: () => dialog.close() }, '닫기 ×')),
-    !recorded ? h('p', { class: 'empty', text: '아직 기록이 없는 날이에요.' }) : null,
+    !recorded ? h('p', { class: 'empty', text: '아직 기록이 없는 날이에요. 기록은 Claude Code 세션에서 평문으로 하면 돼요.' }) : null,
     stk.length ? h('div', { class: 'day-stickers' }, ...stk.map((s) =>
       s.img ? h('img', { src: s.img, alt: s.label, title: s.label }) : h('span', { class: `chip ${s.kind}`, text: s.label }))) : null,
     entries.length ? h('section', {}, h('h3', { text: '그날 쓴 글' }), ...entries.map((e) => h('p', { class: 'raw', text: e.text }))) : null,
     work.length ? h('section', {}, h('h3', { text: '작업' }), h('ul', { class: 'day-list' }, ...work.map(workRow))) : null,
     sales.length ? h('section', {}, h('h3', { text: '판매' }), h('ul', { class: 'day-list' }, ...sales.map(saleRow))) : null,
     recorded && !work.length && !sales.length ? h('p', { class: 'empty', text: '쉰 날로 기록됐어요.' }) : null,
-    h('div', { class: 'logsheet-foot' },
-      h('button', { type: 'button', class: 'primary', onclick: () => { dialog.close(); onWrite(date); } }, '이 날에 더 쓰기')),
   ].filter(Boolean));
   dialog.showModal();
 }
@@ -211,7 +209,7 @@ export async function celebrate(levelRoot, burst, { from, to, tiers }) {
       h('div', { class: 'burst-star' }),
       h('div', { class: 'burst-text' }, h('b', { text: `Lv ${t1.min}` }), h('span', { text: t1.name })),
     );
-    burst.querySelector('.burst-star').innerHTML = (await import('./log-calendar.js?v=1795447419')).starSvg(16);
+    burst.querySelector('.burst-star').innerHTML = (await import('./log-calendar.js?v=1795447988')).starSvg(16);
     burst.hidden = false;
     burst.onclick = () => (burst.hidden = true);
     await new Promise((r) => setTimeout(r, reduced() ? 1500 : 2200));
