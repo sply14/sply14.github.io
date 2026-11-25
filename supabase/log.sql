@@ -14,7 +14,7 @@ create table public.log_entries (
   created_at timestamptz not null default now()
 );
 
--- 작업. span_key가 같은 작업이 이어진 날들은 달력에 막대로 그린다.
+-- 작업. span_key가 같은 작업은 한 작품을 만든 기간으로 묶인다 (item_id는 맨 아래에서 추가).
 create table public.log_work (
   id uuid primary key default gen_random_uuid(),
   date date not null references public.log_days on delete cascade,
@@ -146,3 +146,84 @@ end;
 $$;
 revoke execute on function public.log_save_day(jsonb) from public, anon;
 grant execute on function public.log_save_day(jsonb) to authenticated;
+
+/* ───────── 좌판의 낱개도 만든 개수로 센다 (2026-11-25) ───────── */
+
+-- ① 새 코드 배포 전에: 낱개 이벤트가 어느 대표 상품의 것인지 (지워진 뒤에도 알 수 있게 여기에 남긴다)
+alter table public.catalog_events add column parent_id uuid;
+
+-- ② 새 코드 배포 (옛 코드는 낱개 이벤트를 종류로 세므로 ③보다 먼저)
+
+-- ③ 트리거가 낱개(piece)도 남기게 바꾸고, 이미 있는 낱개를 올린 때로 채운다.
+create or replace function public.catalog_items_log_events()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if tg_op = 'INSERT' then
+    if new.kind in ('product', 'piece') then
+      insert into public.catalog_events (item_id, event, at, parent_id) values (new.id, 'added', now(), new.parent_id);
+      if new.hidden then
+        insert into public.catalog_events (item_id, event, at, parent_id) values (new.id, 'hidden', now(), new.parent_id);
+      end if;
+    end if;
+    return new;
+  elsif tg_op = 'UPDATE' then
+    if new.kind in ('product', 'piece') and old.hidden is distinct from new.hidden then
+      insert into public.catalog_events (item_id, event, at, parent_id)
+      values (new.id, case when new.hidden then 'hidden' else 'shown' end, now(), new.parent_id);
+    end if;
+    return new;
+  else
+    if old.kind in ('product', 'piece') and not old.hidden then
+      insert into public.catalog_events (item_id, event, at, parent_id) values (old.id, 'deleted', now(), old.parent_id);
+    end if;
+    return old;
+  end if;
+end;
+$$;
+
+insert into public.catalog_events (item_id, event, at, parent_id)
+select c.id, 'added', c.created_at, c.parent_id
+  from public.catalog_items c
+ where c.kind = 'piece'
+   and not exists (select 1 from public.catalog_events e where e.item_id = c.id)
+ order by c.created_at, c.no;
+
+/* ───────── 만든 기간: 작업을 작품에 연결 (2026-11-25) ───────── */
+
+-- 새 코드 배포 전에. 상품이 지워지면 비워지고 작업 기록은 남는다.
+alter table public.log_work add column item_id uuid references public.catalog_items(id) on delete set null;
+create index log_work_item on public.log_work (item_id);
+-- log_save_day의 work에 item_id를 받는다: payload.work = [{title, minutes, span_key, item_id}]
+create or replace function public.log_save_day(payload jsonb)
+returns void language plpgsql security invoker set search_path = '' as $$
+declare
+  d date := (payload->>'date')::date;
+begin
+  if d is null then
+    raise exception 'date is required';
+  end if;
+
+  insert into public.log_days (date) values (d) on conflict (date) do nothing;
+
+  if coalesce(btrim(payload->>'text'), '') <> '' then
+    insert into public.log_entries (date, text) values (d, payload->>'text');
+  end if;
+
+  insert into public.log_work (date, title, minutes, span_key, item_id)
+  select d, w->>'title', (w->>'minutes')::int, nullif(w->>'span_key', ''), (w->>'item_id')::uuid
+    from jsonb_array_elements(coalesce(payload->'work', '[]'::jsonb)) w
+   where coalesce(btrim(w->>'title'), '') <> '';
+
+  insert into public.log_sales (date, item_id, title, channel, amount, qty, gift)
+  select d, (s->>'item_id')::uuid, coalesce(s->>'title', ''), nullif(s->>'channel', ''),
+         (s->>'amount')::bigint, coalesce((s->>'qty')::int, 1), coalesce((s->>'gift')::boolean, false)
+    from jsonb_array_elements(coalesce(payload->'sales', '[]'::jsonb)) s;
+
+  update public.catalog_items c
+     set sold = true, updated_at = now()
+    from jsonb_array_elements(coalesce(payload->'sales', '[]'::jsonb)) s
+   where coalesce((s->>'mark_sold')::boolean, false)
+     and s->>'item_id' is not null
+     and c.id = (s->>'item_id')::uuid;
+end;
+$$;

@@ -107,19 +107,6 @@
   to { transform: scaleY(1); opacity: 0; }
 }
 
-/* 며칠 이어진 작업 막대 */
-.bar-span {
-  align-self: center;
-  height: 26%;
-  margin: 0 18%;
-  background: var(--ink);
-  border: 1.5px solid var(--paper);
-  border-radius: 99px;
-  pointer-events: none;
-  z-index: 2;
-}
-.year.vertical .bar-span { justify-self: center; width: 26%; height: auto; margin: 18% 0; }
-
 /* 스티커: 칸 안에 딱 맞게 (기울이거나 넘치지 않게). 한 칸에 하나. */
 .sticker {
   position: relative;
@@ -411,3 +398,19 @@
 .year { grid-template-columns: var(--head, 3.2em) repeat(31, var(--c, minmax(0, 1fr))); width: auto; max-width: none; }
 .year.vertical { grid-template-columns: var(--head, 2.2em) repeat(12, var(--c, minmax(0, 1fr))); }
 .view.month { grid-template-columns: repeat(7, var(--c, minmax(0, 1fr))); width: auto; }
+.logsheet .hint input { width: 48px; font: inherit; text-align: center; border: 0; border-bottom: 1px solid var(--ink); background: none; padding: 1px 0; outline: none; }
+
+/* 만든 기간: 호버한 작품의 첫 작업일부터 차례로 채운다. 작업한 날은 검정, 사이의 날은 빗금. */
+.logsheet .made { margin: 12px 18px 0; font-size: 12px; font-weight: 700; }
+.making::before {
+  content: ""; position: absolute; inset: -1px; z-index: 0; pointer-events: none;
+  background: repeating-linear-gradient(135deg, #bdbdbd 0 1px, transparent 1px 4px);
+  transform-origin: bottom;
+  animation: making-in .28s var(--ease) var(--wait, 0ms) both;
+}
+.making.worked::before { background: var(--ink); }
+.making.worked .memo { color: var(--paper); }
+.has-making .sticker:not(.making-src), .has-making .mcell:not(.making-src) img { opacity: .25; }
+.has-making .sticker, .mcell img { transition: opacity .2s; }
+@keyframes making-in { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@media (prefers-reduced-motion: reduce) { .making::before { animation: none; } }

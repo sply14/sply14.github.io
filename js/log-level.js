@@ -2,7 +2,8 @@
 // 곡선: 레벨 = 100 × (내 수치 ÷ 구찌 기준)^(1/p). 초반엔 잘 오르고 위로 갈수록 기하급수적으로 어려워진다.
 
 export const DEFAULT_METRICS = {
-  works: { label: '작품', baseline: 10000, p: 2.6, weight: 30, source: '구찌 온라인 상품 수 규모 추정치' },
+  // repeat: 같은 종류를 몇 개 더 만들면 새 종류 1개와 같게 볼지
+  works: { label: '작품', baseline: 10000, p: 2.6, weight: 30, repeat: 10, source: '구찌 온라인 상품 수 규모 추정치' },
   revenue: { label: '매출', baseline: 11e12, p: 7, weight: 40, source: '케링 연차보고서 구찌 연매출 약 76억 유로(2024)' },
   social: { label: '소셜', baseline: 50_000_000, p: 5.7, weight: 30, source: '구찌 인스타그램 팔로워 약 5천만' },
 };
@@ -10,6 +11,11 @@ export const DEFAULT_METRICS = {
 export function metricLevel(value, m) {
   if (!(value > 0)) return 0;
   return Math.min(100, 100 * (value / m.baseline) ** (1 / m.p));
+}
+
+// 작품 점수: 새 종류는 1점, 같은 종류를 더 만든 것은 1/repeat점
+export function worksPoints({ kinds, made }, { repeat } = DEFAULT_METRICS.works) {
+  return kinds + (repeat > 0 ? (made - kinds) / repeat : 0);
 }
 
 export function brandLevel(values, metrics = DEFAULT_METRICS) {

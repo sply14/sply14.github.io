@@ -1,12 +1,12 @@
 // 브랜드 로그 페이지 (관리자 전용). 평문 기록 → 연간 달력 → 브랜드 레벨.
-import { LOCAL } from './common.js?v=1795582444';
-import { kstToday, addDays, daysInMonth, weekStart, weekday } from './log-dates.js?v=1795582444';
-import { DEFAULT_METRICS, TIERS, floor1 } from './log-level.js?v=1795582444';
-import { levelByDate } from './log-stats.js?v=1795582444';
-import { createLogApi } from './log-api.js?v=1795582444';
-import { renderYear, highlightDay, popStickers } from './log-calendar.js?v=1795582444';
-import { drawLevel, drawRecords, openDay, openSettings, celebrate, levelAt } from './log-panels.js?v=1795582444';
-import { renderMonth, renderWeek, renderDay } from './log-views.js?v=1795582444';
+import { LOCAL } from './common.js?v=1795604839';
+import { kstToday, addDays, daysInMonth, weekStart, weekday } from './log-dates.js?v=1795604839';
+import { DEFAULT_METRICS, TIERS, floor1 } from './log-level.js?v=1795604839';
+import { levelByDate } from './log-stats.js?v=1795604839';
+import { createLogApi } from './log-api.js?v=1795604839';
+import { renderYear, highlightDay, popStickers, bindMakingHover } from './log-calendar.js?v=1795604839';
+import { drawLevel, drawRecords, openDay, openSettings, celebrate, levelAt } from './log-panels.js?v=1795604839';
+import { renderMonth, renderWeek, renderDay } from './log-views.js?v=1795604839';
 
 const $ = (s) => document.querySelector(s);
 const yearEl = $('#year');
@@ -70,7 +70,10 @@ function pickDay(levels) {
 const minDate = (a, b) => (a < b ? a : b);
 const pad = (n) => String(n).padStart(2, '0');
 
+const making = bindMakingHover(yearEl, () => state.data, $('#year-sum'));
+
 export function drawYear() {
+  making.reset(); // 칸을 새로 그리므로 채워 둔 기간도 잊는다
   for (const b of document.querySelectorAll('.views button')) b.setAttribute('aria-pressed', String(b.dataset.view === state.view));
   const metrics = metricsOf(state.data.settings);
   const tiers = tiersOf(state.data.settings);

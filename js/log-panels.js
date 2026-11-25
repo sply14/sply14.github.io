@@ -1,8 +1,9 @@
 // 레벨 머리글, 최고 기록 카드, 날짜 상세, 설정, 저장 뒤 축하.
-import { h } from './common.js?v=1795582444';
-import { addDays } from './log-dates.js?v=1795582444';
-import { DEFAULT_METRICS, TIERS, floor1, tierOf, nextTier } from './log-level.js?v=1795582444';
-import { levelByDate, records, stickers } from './log-stats.js?v=1795582444';
+import { h } from './common.js?v=1795604839';
+import { addDays } from './log-dates.js?v=1795604839';
+import { DEFAULT_METRICS, TIERS, floor1, tierOf, nextTier } from './log-level.js?v=1795604839';
+import { makingText } from './log-calendar.js?v=1795604839';
+import { levelByDate, records, stickers, itemName, makingsOn } from './log-stats.js?v=1795604839';
 
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 const won = (n) => '₩' + Math.round(n).toLocaleString('ko-KR');
@@ -42,7 +43,7 @@ export function drawLevel(root, { data, today, year, metrics, tiers }) {
       h('p', { class: 'lv-who', text: `누가 아는가 — ${tier.who}` }),
       next ? h('p', { class: 'lv-next', text: `다음 · Lv ${next.min} ${next.name}` }) : null,
       h('ul', { class: 'lv-parts' },
-        part('works', `${v.works}점`),
+        part('works', `${v.kinds}종류 · ${v.made}개`),
         part('revenue', v.revenue > 0 ? `최근 12개월 최고 ${won(v.revenue)}` : '아직 판매 없음'),
         part('social', '아직 없음'),
       ),
@@ -62,7 +63,7 @@ export function drawRecords(root, { data, today }) {
       h('span', { class: 'best', text: rec.brokeOn === today && rec.value > 0 && rec.value >= rec.best ? '★ 경신' : `최고 ${fmt(rec.best)}` }),
     );
   root.replaceChildren(
-    card('포트폴리오', r.portfolio, (n) => `${n}점`),
+    card(`작품 ${r.portfolio.kinds}종류`, r.portfolio, (n) => `${n}개`),
     card('28일 매출', r.revenue28, won),
     card('이번 달 매출', r.revenueMonth, won),
     card('오늘 매출', r.bestDay, won),
@@ -94,11 +95,12 @@ export async function openDay(dialog, date, { api, data, levels, tiers, onChange
     amt.onchange = () => run(() => api.updateSale(s.id, { amount: amt.value === '' ? null : Math.max(0, Math.round(Number(amt.value))) }));
     const img = s.item_id && items.get(s.item_id)?.thumb_url;
     return h('li', {}, img ? h('img', { src: img, alt: '' }) : null,
-      h('span', { class: 't', text: `${s.title || items.get(s.item_id)?.name || '판매'}${s.channel ? ' · ' + s.channel : ''}${s.qty > 1 ? ` × ${s.qty}` : ''}${s.gift ? ' · 선물' : ''}` }),
+      h('span', { class: 't', text: `${s.title || itemName(items.get(s.item_id), items.get(items.get(s.item_id)?.parent_id)) || '판매'}${s.channel ? ' · ' + s.channel : ''}${s.qty > 1 ? ` × ${s.qty}` : ''}${s.gift ? ' · 선물' : ''}` }),
       amt,
       h('button', { type: 'button', class: 'x', 'aria-label': '지우기', onclick: () => confirm('이 판매 기록을 지울까요?') && run(() => api.deleteSale(s.id)) }, '×'));
   };
   const stk = stickers(data, levels, date, date, tiers);
+  const made = makingsOn(data, date);
 
   dialog.replaceChildren(...[
     h('div', { class: 'logsheet-head' },
@@ -107,6 +109,7 @@ export async function openDay(dialog, date, { api, data, levels, tiers, onChange
     !recorded ? h('p', { class: 'empty', text: '아직 기록이 없는 날이에요. 기록은 Claude Code 세션에서 평문으로 하면 돼요.' }) : null,
     stk.length ? h('div', { class: 'day-stickers' }, ...stk.map((s) =>
       s.img ? h('img', { src: s.img, alt: s.label, title: s.label }) : h('span', { class: `chip ${s.kind}`, text: s.label }))) : null,
+    ...made.map((m) => h('p', { class: 'made', text: makingText(m) })),
     entries.length ? h('section', {}, h('h3', { text: '그날 쓴 글' }), ...entries.map((e) => h('p', { class: 'raw', text: e.text }))) : null,
     work.length ? h('section', {}, h('h3', { text: '작업' }), h('ul', { class: 'day-list' }, ...work.map(workRow))) : null,
     sales.length ? h('section', {}, h('h3', { text: '판매' }), h('ul', { class: 'day-list' }, ...sales.map(saleRow))) : null,
@@ -139,11 +142,14 @@ export function openSettings(dialog, { api, data, onChanged }) {
   const channels = h('textarea', { name: 'channels', rows: 4, 'aria-label': '판매처 목록' });
   channels.value = data.channels.join('\n');
 
+  const repeat = h('input', { type: 'number', name: 'works.repeat', min: 1, step: 1, value: s.metrics?.works?.repeat ?? DEFAULT_METRICS.works.repeat, 'aria-label': '새 종류 1개와 같은 낱개 수' });
+
   const form = h('form', { method: 'dialog' },
     h('div', { class: 'logsheet-head' }, h('strong', { text: '설정' }), h('button', { type: 'button', class: 'close', onclick: () => dialog.close() }, '닫기 ×')),
     h('section', {}, h('h3', { text: '레벨 계산 (구찌 기준값)' }),
       h('p', { class: 'hint', text: '레벨 = 100 × (내 수치 ÷ 기준값)^(1/p). 가중치는 세 수치의 비중이에요.' }),
-      h('table', { class: 'set' }, h('tr', {}, h('th'), h('th', { text: '가중치' }), h('th', { text: '기준값' }), h('th', { text: 'p' }), h('th', { text: '출처' })), ...metricRows)),
+      h('table', { class: 'set' }, h('tr', {}, h('th'), h('th', { text: '가중치' }), h('th', { text: '기준값' }), h('th', { text: 'p' }), h('th', { text: '출처' })), ...metricRows),
+      h('p', { class: 'hint' }, '작품은 새 종류 1개가 1점이에요. 같은 종류를 ', repeat, '개 더 만들면 새 종류 1개와 같은 점수예요.')),
     h('section', {}, h('h3', { text: '레벨 가이드 문구' }), h('table', { class: 'set tiers' }, ...tierRows)),
     h('section', {}, h('h3', { text: '판매처 (한 줄에 하나)' }), channels),
     h('div', { class: 'logsheet-foot' },
@@ -166,6 +172,8 @@ export function openSettings(dialog, { api, data, onChanged }) {
       };
       metrics[key] = { weight: n('weight'), baseline: n('baseline') || def.baseline, p: n('p') || def.p, source: String(fd.get(`${key}.source`) ?? def.source) };
     }
+    const rep = Number(fd.get('works.repeat'));
+    metrics.works.repeat = rep >= 1 ? rep : DEFAULT_METRICS.works.repeat;
     const tiers = TIERS.map((def, i) => ({ name: String(fd.get(`tier.${i}.name`) || def.name), who: String(fd.get(`tier.${i}.who`) || def.who) }));
     const list = String(fd.get('channels') || '').split('\n').map((x) => x.trim()).filter(Boolean);
     try {
@@ -209,7 +217,7 @@ export async function celebrate(levelRoot, burst, { from, to, tiers }) {
       h('div', { class: 'burst-star' }),
       h('div', { class: 'burst-text' }, h('b', { text: `Lv ${t1.min}` }), h('span', { text: t1.name })),
     );
-    burst.querySelector('.burst-star').innerHTML = (await import('./log-calendar.js?v=1795582444')).starSvg(16);
+    burst.querySelector('.burst-star').innerHTML = (await import('./log-calendar.js?v=1795604839')).starSvg(16);
     burst.hidden = false;
     burst.onclick = () => (burst.hidden = true);
     await new Promise((r) => setTimeout(r, reduced() ? 1500 : 2200));

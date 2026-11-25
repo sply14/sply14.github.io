@@ -1,8 +1,8 @@
 // 기록(LogData)에서 달력과 레벨 화면에 필요한 숫자를 계산합니다. DOM을 모르는 순수 함수만 있습니다.
-// LogData = { days: [{date}], work: [{date, title, minutes, span_key}], sales: [{date, item_id, title, channel, amount, qty, gift}],
-//             events: [{item_id, event, at}], items: [{id, name, thumb_url, image_url, kind}] }
-import { kstDateOf, addDays, diffDays } from './log-dates.js?v=1795582444';
-import { DEFAULT_METRICS, brandLevel, floor1, tierOf, TIERS } from './log-level.js?v=1795582444';
+// LogData = { days: [{date}], work: [{date, title, minutes, span_key, item_id}], sales: [{date, item_id, title, channel, amount, qty, gift}],
+//             events: [{item_id, event, at, parent_id}], items: [{id, name, thumb_url, image_url, kind, parent_id, no}] }
+import { kstDateOf, addDays } from './log-dates.js?v=1795604839';
+import { DEFAULT_METRICS, brandLevel, worksPoints, floor1, tierOf, TIERS } from './log-level.js?v=1795604839';
 
 const saleValue = (s) => (s.gift ? 0 : (s.amount ?? 0) * (s.qty ?? 1));
 
@@ -38,19 +38,32 @@ function index(data) {
 
 /* ───────── 포트폴리오 ───────── */
 
+// 날짜별 { kinds: 보이는 상품 종류 수, made: 만든 개수 }.
+// 낱개(parent_id가 있는 이벤트)가 있는 상품은 낱개 수를, 없으면 1개를 센다. 대표가 숨겨지면 낱개도 빠진다.
 export function portfolioByDate(events, from, to) {
-  const delta = new Map();
-  for (const e of events) {
-    const d = kstDateOf(e.at);
-    const v = e.event === 'added' || e.event === 'shown' ? 1 : -1;
-    delta.set(d, (delta.get(d) ?? 0) + v);
-  }
-  let count = 0;
-  for (const [d, v] of [...delta].sort(([a], [b]) => (a < b ? -1 : 1))) if (d < from) count = Math.max(0, count + v);
+  const sorted = events.map((e) => ({ e, d: kstDateOf(e.at), t: Date.parse(e.at) })).sort((a, b) => a.t - b.t);
+  const kinds = new Set(), pieces = new Map();
+  const apply = ({ item_id, event, parent_id }) => {
+    const on = event === 'added' || event === 'shown';
+    if (parent_id && !pieces.has(parent_id)) pieces.set(parent_id, new Set());
+    const set = parent_id ? pieces.get(parent_id) : kinds;
+    if (on) set.add(item_id);
+    else set.delete(item_id);
+  };
+  const count = () => {
+    let made = 0;
+    for (const id of kinds) made += Math.max(1, pieces.get(id)?.size ?? 0);
+    return { kinds: kinds.size, made };
+  };
+  let i = 0;
+  while (i < sorted.length && sorted[i].d < from) apply(sorted[i++].e);
   const out = new Map();
+  let cur = count();
   for (const d of dateRange(from, to)) {
-    count = Math.max(0, count + (delta.get(d) ?? 0));
-    out.set(d, count);
+    const start = i;
+    while (i < sorted.length && sorted[i].d <= d) apply(sorted[i++].e);
+    if (i > start) cur = count();
+    out.set(d, cur);
   }
   return out;
 }
@@ -97,9 +110,11 @@ function summarize(series, today, value = series.get(today) ?? 0) {
 function seriesSet(data, to) {
   const ix = index(data);
   const start = ix.first && ix.first < to ? ix.first : to;
+  const portfolio = portfolioByDate(data.events, start, to);
   return {
     start,
-    portfolio: portfolioByDate(data.events, start, to),
+    portfolio,
+    made: new Map([...portfolio].map(([d, v]) => [d, v.made])),
     revenue28: windowSeries(ix.revenue, start, to, 28),
     revenue365: windowSeries(ix.revenue, start, to, 365),
     bestDay: windowSeries(ix.revenue, start, to, 1),
@@ -116,10 +131,11 @@ export function levelByDate(data, from, to, metrics = DEFAULT_METRICS) {
   const out = new Map();
   let bestWorks = 0, bestRevenue = 0;
   for (const d of dateRange(start, to)) {
-    bestWorks = Math.max(bestWorks, s.portfolio.get(d) ?? 0);
+    const shown = s.portfolio.get(d) ?? { kinds: 0, made: 0 };
+    bestWorks = Math.max(bestWorks, worksPoints(shown, metrics.works));
     bestRevenue = Math.max(bestRevenue, s.revenue365.get(d) ?? 0);
     if (d >= from) {
-      const values = { works: bestWorks, revenue: bestRevenue, social: 0 };
+      const values = { works: bestWorks, kinds: shown.kinds, made: shown.made, revenue: bestRevenue, social: 0 };
       out.set(d, { ...brandLevel(values, metrics), values });
     }
   }
@@ -141,7 +157,7 @@ export function records(data, today) {
   const yesterday = addDays(today, -1);
   const streakNow = ix.days.has(today) ? s.streak.get(today) ?? 0 : s.streak.get(yesterday) ?? 0;
   return {
-    portfolio: summarize(s.portfolio, today),
+    portfolio: { ...summarize(s.made, today), kinds: s.portfolio.get(today)?.kinds ?? 0 },
     revenue28: summarize(s.revenue28, today),
     revenueMonth: summarize(monthSeries, today),
     bestDay: summarize(s.bestDay, today),
@@ -154,7 +170,7 @@ export function records(data, today) {
 function recordBreakDates(data, to) {
   const s = seriesSet(data, to);
   const out = new Set();
-  for (const key of ['portfolio', 'revenue28', 'bestDay', 'workWeekMinutes', 'streak']) {
+  for (const key of ['made', 'revenue28', 'bestDay', 'workWeekMinutes', 'streak']) {
     let best = 0;
     for (const [d, v] of s[key]) if (v > best) { best = v; out.add(d); }
   }
@@ -171,24 +187,45 @@ export function cellLevel(date, data) {
   return m < 60 ? 1 : m < 180 ? 2 : 3;
 }
 
-export function spans(work) {
-  const byKey = new Map();
-  for (const w of work) {
-    if (!w.span_key) continue;
-    if (!byKey.has(w.span_key)) byKey.set(w.span_key, { title: w.title, dates: new Set() });
-    byKey.get(w.span_key).dates.add(w.date);
-  }
-  const out = [];
-  for (const [span_key, { title, dates }] of byKey) {
-    const sorted = [...dates].sort();
-    let from = sorted[0], prev = sorted[0];
-    for (const d of [...sorted.slice(1), null]) {
-      if (d && diffDays(prev, d) === 1) { prev = d; continue; }
-      if (prev !== from) out.push({ span_key, title, from, to: prev });
-      from = prev = d;
+/* ───────── 만든 기간 ───────── */
+
+// 작업을 작품(item_id) 또는 묶음(span_key)으로 모은다. span_key의 작업 하나라도 작품에 연결됐으면 그 묶음은 그 작품의 것.
+// 돌려주는 것: Map('item:<id>' | 'span:<key>' → { label, from, to, dates, minutes })
+export function makings(data) {
+  const ix = index(data);
+  const owner = new Map();
+  for (const w of data.work) if (w.span_key && w.item_id) owner.set(w.span_key, w.item_id);
+  const out = new Map();
+  for (const w of data.work) {
+    const item_id = w.item_id || owner.get(w.span_key);
+    const key = item_id ? `item:${item_id}` : w.span_key ? `span:${w.span_key}` : null;
+    if (!key) continue;
+    if (!out.has(key)) {
+      const item = item_id ? ix.items.get(item_id) : null;
+      out.set(key, { label: itemName(item, ix.items.get(item?.parent_id)) || w.title, from: w.date, to: w.date, dates: new Set(), minutes: 0 });
     }
+    const m = out.get(key);
+    if (w.date < m.from) m.from = w.date;
+    if (w.date > m.to) m.to = w.date;
+    m.dates.add(w.date);
+    m.minutes += w.minutes ?? 0;
   }
-  return out.sort((a, b) => (a.from < b.from ? -1 : 1));
+  return out;
+}
+
+// 그날 칸에서 볼 만든 기간: 그날 작업한 것, 올린 작품, 팔린 작품 (낱개의 작업이 없으면 대표 작품의 것)
+export function makingsOn(data, date, all = makings(data)) {
+  const ix = index(data);
+  const found = new Set();
+  for (const m of all.values()) if (m.dates.has(date)) found.add(m);
+  const ids = [...addedOn(data.events, date), ...(ix.salesOn.get(date) ?? []).map((s) => s.item_id)].filter(Boolean);
+  for (const id of ids) {
+    const item = ix.items.get(id);
+    if (!item || item.hidden || ix.items.get(item.parent_id)?.hidden) continue;
+    const m = all.get(`item:${id}`) ?? all.get(`item:${item.parent_id}`);
+    if (m) found.add(m);
+  }
+  return [...found];
 }
 
 function hash(s) {
@@ -197,19 +234,30 @@ function hash(s) {
   return h >>> 0;
 }
 
+// 낱개는 대표 상품 이름 + 번호 (Wallet 001)
+export function itemName(item, parent) {
+  if (!item) return '';
+  if (item.kind !== 'piece') return item.name ?? '';
+  return `${item.name || parent?.name || ''} ${String(item.no).padStart(3, '0')}`.trim();
+}
+
 export function stickers(data, levels, from, to, tiers = TIERS) {
   const ix = index(data);
   const breaks = recordBreakDates(data, to);
   const out = [];
   for (const d of dateRange(from, to)) {
-    for (const id of addedOn(data.events, d)) {
+    const ids = addedOn(data.events, d);
+    const withPieces = new Set(ids.map((id) => ix.items.get(id)?.parent_id).filter(Boolean));
+    for (const id of ids) {
       const item = ix.items.get(id);
-      if (item?.hidden) continue; // 지금 숨긴 상품은 달력에서도 뺀다
-      out.push({ date: d, kind: 'product', item_id: id, img: item ? item.thumb_url || item.image_url || undefined : undefined, label: item ? item.name : '상품', seed: hash(d + id) });
+      const parent = item?.parent_id ? ix.items.get(item.parent_id) : null;
+      if (item?.hidden || parent?.hidden) continue; // 지금 숨긴 상품은 달력에서도 뺀다
+      if (withPieces.has(id)) continue; // 같은 날 낱개도 올렸으면 낱개 사진만
+      out.push({ date: d, kind: 'product', item_id: id, img: item ? item.thumb_url || item.image_url || undefined : undefined, label: itemName(item, parent) || '상품', seed: hash(d + id) });
     }
     for (const [i, s] of (ix.salesOn.get(d) ?? []).entries()) {
       const item = s.item_id ? ix.items.get(s.item_id) : null;
-      out.push({ date: d, kind: 'sale', item_id: s.item_id, img: item ? item.thumb_url || item.image_url || undefined : undefined, label: s.title || item?.name || '판매', amount: saleValue(s), seed: hash(d + 'sale' + i) });
+      out.push({ date: d, kind: 'sale', item_id: s.item_id, img: item ? item.thumb_url || item.image_url || undefined : undefined, label: s.title || itemName(item, ix.items.get(item?.parent_id)) || '판매', amount: saleValue(s), seed: hash(d + 'sale' + i) });
     }
     const cur = levels.get(d), prev = levels.get(addDays(d, -1));
     if (cur && prev && floor1(cur.total) > floor1(prev.total)) {

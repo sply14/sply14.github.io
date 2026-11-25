@@ -1,9 +1,9 @@
 // 월간·주간·일간 보기. 연간 달력(log-calendar.js)과 같은 데이터로 그린다.
-import { h } from './common.js?v=1795582444';
-import { addDays, monthWeeks, weekday } from './log-dates.js?v=1795582444';
-import { daySummary, stickers, levelByDate } from './log-stats.js?v=1795582444';
-import { floor1 } from './log-level.js?v=1795582444';
-import { starSvg, fitGrid } from './log-calendar.js?v=1795582444';
+import { h } from './common.js?v=1795604839';
+import { addDays, monthWeeks, weekday } from './log-dates.js?v=1795604839';
+import { daySummary, stickers, levelByDate, portfolioByDate } from './log-stats.js?v=1795604839';
+import { floor1 } from './log-level.js?v=1795604839';
+import { starSvg, fitGrid } from './log-calendar.js?v=1795604839';
 
 const WEEK = ['월', '화', '수', '목', '금', '토', '일'];
 const won = (n) => '₩' + Math.round(n).toLocaleString('ko-KR');
@@ -28,7 +28,7 @@ function starMark(star) {
   return el;
 }
 
-// 기간 합계: 작업 시간, 매출, 새 상품 수, 기록한 날
+// 기간 합계: 작업 시간, 매출, 늘어난 작품 개수, 기록한 날
 export function periodSum(data, from, to) {
   let minutes = 0, revenue = 0, days = 0;
   for (let d = from; d <= to; d = addDays(d, 1)) {
@@ -37,8 +37,10 @@ export function periodSum(data, from, to) {
     revenue += s.revenue;
     if (s.recorded) days += 1;
   }
-  const products = stickers(data, new Map(), from, to).filter((s) => s.kind === 'product').length;
-  return `기록 ${days}일 · 작업 ${hm(minutes)} · 매출 ${won(revenue)} · 상품 +${products}`;
+  const before = addDays(from, -1);
+  const series = portfolioByDate(data.events, before, to);
+  const more = Math.max(0, series.get(to).made - series.get(before).made);
+  return `기록 ${days}일 · 작업 ${hm(minutes)} · 매출 ${won(revenue)} · 작품 +${more}개`;
 }
 
 /* ───────── 월간 ───────── */
@@ -58,6 +60,7 @@ export function renderMonth(root, year, month, data, levels, { today, onPick, ti
     root.append(h('button', {
       type: 'button',
       class: 'mcell' + (date === today ? ' today' : '') + (date > today ? ' future' : ''),
+      'data-date': date,
       'data-level': String(s.level),
       'aria-label': `${Number(date.slice(5, 7))}월 ${Number(date.slice(8))}일`,
       onclick: () => onPick(date),

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { portfolioByDate, addedOn, levelByDate, records, cellLevel, spans, stickers, daySummary } from '../js/log-stats.js';
+import { DEFAULT_METRICS } from '../js/log-level.js';
+import { portfolioByDate, addedOn, levelByDate, records, cellLevel, makings, makingsOn, stickers, daySummary } from '../js/log-stats.js';
 
 const kst = (date, hh = '12:00') => new Date(`${date}T${hh}:00+09:00`).toISOString();
 const empty = () => ({ days: [], work: [], sales: [], events: [], items: [] });
@@ -12,10 +13,10 @@ test('portfolioByDate adds and removes per KST day', () => {
     { item_id: 'a', event: 'hidden', at: kst('2026-11-03') },
   ];
   const m = portfolioByDate(events, '2026-11-01', '2026-11-04');
-  assert.equal(m.get('2026-11-01'), 1);
-  assert.equal(m.get('2026-11-02'), 2);
-  assert.equal(m.get('2026-11-03'), 1);
-  assert.equal(m.get('2026-11-04'), 1);
+  assert.deepEqual(m.get('2026-11-01'), { kinds: 1, made: 1 });
+  assert.deepEqual(m.get('2026-11-02'), { kinds: 2, made: 2 });
+  assert.deepEqual(m.get('2026-11-03'), { kinds: 1, made: 1 });
+  assert.deepEqual(m.get('2026-11-04'), { kinds: 1, made: 1 });
 });
 
 test('addedOn uses the Korean date of the event', () => {
@@ -87,16 +88,6 @@ test('records sum revenue over 28 days and mark the day a best was broken', () =
   assert.equal(r.bestDay.best, 40000);
 });
 
-test('spans join consecutive days with the same span key, ignoring one-day work', () => {
-  const work = [
-    { date: '2026-11-01', title: '카드지갑 패턴', minutes: 60, span_key: 'wallet' },
-    { date: '2026-11-02', title: '카드지갑 패턴', minutes: 60, span_key: 'wallet' },
-    { date: '2026-11-03', title: '카드지갑 패턴', minutes: 60, span_key: 'wallet' },
-    { date: '2026-11-05', title: '촬영', minutes: 60, span_key: 'shoot' },
-  ];
-  assert.deepEqual(spans(work), [{ span_key: 'wallet', title: '카드지갑 패턴', from: '2026-11-01', to: '2026-11-03' }]);
-});
-
 test('stickers fall back to a text tag when the sold item was deleted', () => {
   const data = empty();
   data.days = [{ date: '2026-11-24' }];
@@ -151,4 +142,126 @@ test('daySummary totals one day of work and sales', () => {
   assert.deepEqual(s.work.map((w) => w.title), ['패턴', '촬영']);
   assert.equal(s.sales.length, 2);
   assert.equal(daySummary(data, '2026-11-25').recorded, false);
+});
+
+/* ───────── 종류와 만든 개수 (좌판) ───────── */
+
+const added = (id, date, parent_id = null, hh) => ({ item_id: id, event: 'added', at: kst(date, hh), parent_id });
+
+test('pieces count toward made, and their parent is not counted twice', () => {
+  const events = [
+    added('a', '2026-11-01'), added('w', '2026-11-01'),
+    added('w1', '2026-11-02', 'w'), added('w2', '2026-11-02', 'w'), added('w3', '2026-11-03', 'w'),
+    { item_id: 'w3', event: 'deleted', at: kst('2026-11-04'), parent_id: 'w' },
+    { item_id: 'w', event: 'hidden', at: kst('2026-11-05') },
+    { item_id: 'w', event: 'shown', at: kst('2026-11-06') },
+  ];
+  const m = portfolioByDate(events, '2026-11-01', '2026-11-06');
+  assert.deepEqual([...m.values()].map((v) => [v.kinds, v.made]), [[2, 2], [2, 3], [2, 4], [2, 3], [1, 1], [2, 3]]);
+});
+
+test('a product hidden in the same moment it was added, and changes before the range, are handled', () => {
+  const events = [
+    added('a', '2026-11-01'),
+    added('h', '2026-11-01'), { item_id: 'h', event: 'hidden', at: kst('2026-11-01') },
+    added('h1', '2026-11-01', 'h'),
+  ];
+  assert.deepEqual(portfolioByDate(events, '2026-11-10', '2026-11-10').get('2026-11-10'), { kinds: 1, made: 1 });
+});
+
+test('ten more of one kind are worth one new kind, and thirty kinds beat thirty of one kind', () => {
+  const build = (kinds, pieces) => {
+    const data = empty();
+    for (let i = 0; i < kinds; i++) data.events.push(added(`k${i}`, '2026-11-01'));
+    for (let i = 0; i < pieces; i++) data.events.push(added(`p${i}`, '2026-11-02', 'k0'));
+    return levelByDate(data, '2026-11-02', '2026-11-02').get('2026-11-02');
+  };
+  assert.ok(Math.abs(build(3, 11).values.works - 4) < 1e-9);
+  assert.ok(Math.abs(build(4, 0).values.works - 4) < 1e-9);
+  assert.ok(build(1, 11).total > build(1, 2).total);
+  assert.ok(build(30, 0).total > build(1, 30).total * 2);
+  const now = build(3, 30).values;
+  assert.deepEqual([now.kinds, now.made], [3, 32]);
+});
+
+test('the ratio comes from the settings', () => {
+  const data = empty();
+  data.events = [added('a', '2026-11-01'), ...[1, 2, 3, 4, 5, 6].map((i) => added(`p${i}`, '2026-11-01', 'a'))];
+  const metrics = { ...DEFAULT_METRICS, works: { ...DEFAULT_METRICS.works, repeat: 5 } };
+  assert.equal(levelByDate(data, '2026-11-01', '2026-11-01', metrics).get('2026-11-01').values.works, 2);
+});
+
+test('the works level never goes down when pieces are deleted', () => {
+  const data = empty();
+  data.events = [added('a', '2026-11-01'), added('p1', '2026-11-01', 'a'), added('p2', '2026-11-01', 'a'),
+    { item_id: 'p2', event: 'deleted', at: kst('2026-11-02'), parent_id: 'a' }];
+  const lv = levelByDate(data, '2026-11-01', '2026-11-02');
+  assert.equal(lv.get('2026-11-02').total, lv.get('2026-11-01').total);
+});
+
+test('portfolio record uses the made count and knows the kinds', () => {
+  const data = empty();
+  data.events = [added('a', '2026-11-01'), added('b', '2026-11-01'), added('p1', '2026-11-02', 'a'), added('p2', '2026-11-02', 'a')];
+  const r = records(data, '2026-11-02').portfolio;
+  assert.deepEqual([r.value, r.best, r.kinds, r.brokeOn], [3, 3, 2, '2026-11-02']);
+});
+
+test('piece stickers are named after the parent, follow its hidden state, and replace it on the same day', () => {
+  const data = empty();
+  data.items = [
+    { id: 'w', name: 'Wallet', thumb_url: 'w.png', kind: 'product', hidden: false },
+    { id: 'w1', name: '', thumb_url: 'w1.png', kind: 'piece', hidden: false, parent_id: 'w', no: 1 },
+    { id: 'h', name: '숨김', thumb_url: 'h.png', kind: 'product', hidden: true },
+    { id: 'h1', name: '', thumb_url: 'h1.png', kind: 'piece', hidden: false, parent_id: 'h', no: 1 },
+  ];
+  data.events = [added('w', '2026-11-24'), added('w1', '2026-11-24', 'w'), added('h1', '2026-11-24', 'h')];
+  const levels = levelByDate(data, '2026-11-23', '2026-11-24');
+  const photos = stickers(data, levels, '2026-11-24', '2026-11-24').filter((s) => s.kind === 'product');
+  assert.deepEqual(photos.map((s) => [s.item_id, s.img, s.label]), [['w1', 'w1.png', 'Wallet 001']]);
+});
+
+/* ───────── 만든 기간 ───────── */
+
+const w = (date, title, minutes, span_key = null, item_id = null) => ({ date, title, minutes, span_key, item_id });
+const makingData = () => ({
+  ...empty(),
+  items: [
+    { id: 'w', name: 'Wallet', kind: 'product', hidden: false },
+    { id: 'w1', name: '', kind: 'piece', parent_id: 'w', no: 1, hidden: false },
+    { id: 'x', name: '기록 없는 것', kind: 'product', hidden: false },
+  ],
+  work: [
+    w('2026-11-03', '지갑 패턴', 60, 'wallet'), w('2026-11-05', '지갑 재단', null, 'wallet', 'w'),
+    w('2026-11-05', '지갑 바느질', 30, 'wallet'), w('2026-11-08', '마감', 90, null, 'w'),
+    w('2026-11-06', '가방 패턴', 120, 'bag'), w('2026-11-07', '촬영', 60),
+  ],
+  events: [added('w1', '2026-11-10', 'w'), added('x', '2026-11-10')],
+});
+
+test('a making period runs from the first to the last work day, joined through the span key', () => {
+  const m = makings(makingData()).get('item:w');
+  assert.deepEqual([m.label, m.from, m.to, m.minutes], ['Wallet', '2026-11-03', '2026-11-08', 180]);
+  assert.deepEqual([...m.dates].sort(), ['2026-11-03', '2026-11-05', '2026-11-08']);
+});
+
+test('work for something not on the site yet is grouped by its span key', () => {
+  const m = makings(makingData()).get('span:bag');
+  assert.deepEqual([m.label, m.from, m.to], ['가방 패턴', '2026-11-06', '2026-11-06']);
+});
+
+test('makingsOn finds the period from a work day, a piece photo, or a sale, and nothing when there is no work', () => {
+  const data = makingData();
+  const labels = (d) => makingsOn(data, d).map((m) => m.label);
+  assert.deepEqual(labels('2026-11-05'), ['Wallet']);
+  assert.deepEqual(labels('2026-11-06'), ['가방 패턴']);
+  assert.deepEqual(labels('2026-11-10'), ['Wallet']);
+  assert.deepEqual(labels('2026-11-07'), []);
+  data.sales = [{ date: '2026-11-20', item_id: 'w1', title: '', amount: 1, qty: 1, gift: false }];
+  assert.deepEqual(makingsOn({ ...data }, '2026-11-20').map((m) => m.label), ['Wallet']);
+});
+
+test('a piece with its own work keeps its own period', () => {
+  const data = makingData();
+  data.work.push(w('2026-11-09', '1번 염색', 20, null, 'w1'));
+  assert.deepEqual(makingsOn(data, '2026-11-10').map((m) => [m.label, m.from]), [['Wallet 001', '2026-11-09']]);
 });

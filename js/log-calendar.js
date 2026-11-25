@@ -1,8 +1,8 @@
 // 연간 달력: 가로 1~31일 × 세로 1~12월 (폰 세로 화면에서는 가로 1~12월 × 세로 1~31일).
-// 칸 채우기(회색 단계), 며칠 이어진 작업 막대, 스티커(상품 누끼 사진만 컬러, 나머지 흑백)를 그립니다.
-import { h } from './common.js?v=1795582444';
-import { daysInMonth } from './log-dates.js?v=1795582444';
-import { cellLevel, spans, stickers } from './log-stats.js?v=1795582444';
+// 칸 채우기(회색 단계), 스티커(상품 누끼 사진만 컬러, 나머지 흑백), 호버하면 만든 기간 채우기를 그립니다.
+import { h } from './common.js?v=1795604839';
+import { daysInMonth, addDays, diffDays } from './log-dates.js?v=1795604839';
+import { cellLevel, makings, makingsOn, stickers } from './log-stats.js?v=1795604839';
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 const pad = (n) => String(n).padStart(2, '0');
@@ -53,22 +53,6 @@ export function renderYear(root, year, data, levels, opts) {
         onclick: () => onPick(date),
       }, title ? h('span', { class: 'memo', text: title }) : null);
       root.append(cell);
-    }
-  }
-
-  // 며칠 이어진 작업은 막대 (달이 바뀌면 달마다 나눠서)
-  for (const s of spans(data.work)) {
-    if (s.to < `${year}-01-01` || s.from > `${year}-12-31`) continue;
-    const from = s.from < `${year}-01-01` ? `${year}-01-01` : s.from;
-    const to = s.to > `${year}-12-31` ? `${year}-12-31` : s.to;
-    for (let m = Number(from.slice(5, 7)); m <= Number(to.slice(5, 7)); m++) {
-      const d0 = m === Number(from.slice(5, 7)) ? Number(from.slice(8)) : 1;
-      const d1 = m === Number(to.slice(5, 7)) ? Number(to.slice(8)) : daysInMonth(year, m);
-      const a = place(vertical, m, d0), b = place(vertical, m, d1);
-      const style = vertical
-        ? `grid-column:${a.col};grid-row:${a.row} / ${b.row + 1}`
-        : `grid-row:${a.row};grid-column:${a.col} / ${b.col + 1}`;
-      root.append(h('span', { class: 'bar-span', style, title: s.title }));
     }
   }
 
@@ -140,4 +124,72 @@ export function fitGrid(root, { cols, head = 0, max = 1200 }) {
   const c = Math.max(8, Math.floor((avail - head - gap * gaps) / cols));
   root.style.setProperty('--c', `${c}px`);
   if (head) root.style.setProperty('--head', `${head}px`);
+}
+
+/* ───────── 만든 기간 ───────── */
+
+const md = (date) => `${Number(date.slice(5, 7))}월 ${Number(date.slice(8))}일`;
+const hm = (min) => (min >= 60 ? `${Math.floor(min / 60)}시간${min % 60 ? ` ${min % 60}분` : ''}` : `${min}분`);
+
+// "Wallet · 11월 3일 ~ 25일 · 23일 중 9일 작업 · 14시간"
+export function makingText(m) {
+  const days = diffDays(m.from, m.to) + 1;
+  const year = m.from.slice(0, 4) !== m.to.slice(0, 4);
+  const full = (d) => (year ? `${d.slice(0, 4)}년 ` : '') + md(d);
+  const end = m.from.slice(0, 7) === m.to.slice(0, 7) ? `${Number(m.to.slice(8))}일` : full(m.to);
+  return [
+    m.label,
+    days === 1 ? md(m.from) : `${full(m.from)} ~ ${end}`,
+    days === 1 ? '하루 작업' : `${days}일 중 ${m.dates.size}일 작업`,
+    m.minutes ? hm(m.minutes) : '',
+  ].filter(Boolean).join(' · ');
+}
+
+// 칸에 마우스를 올리거나 키보드로 옮겨 가면 그 작품을 만든 기간을 첫날부터 차례로 채운다.
+// getData: 지금 데이터, label: 글을 보여 줄 요소 (벗어나면 원래 글로 되돌린다)
+export function bindMakingHover(root, getData, label) {
+  let shown = null, restore = '', all = null, from = null;
+  const clear = () => {
+    if (!shown) return;
+    for (const el of root.querySelectorAll('.making, .making-src')) {
+      el.classList.remove('making', 'worked', 'making-src');
+      el.style.removeProperty('--wait');
+    }
+    root.classList.remove('has-making');
+    label.textContent = restore;
+    shown = null;
+  };
+  const show = (date) => {
+    if (shown === date) return;
+    clear();
+    const data = getData();
+    if (!data) return;
+    if (from !== data) { all = makings(data); from = data; }
+    const list = makingsOn(data, date, all);
+    if (!list.length) return;
+    shown = date;
+    restore = label.textContent;
+    root.classList.add('has-making');
+    for (const el of root.querySelectorAll(`[data-date="${date}"]`)) el.classList.add('making-src'); // 올려 둔 사진은 그대로 보이게
+    const first = list.map((m) => m.from).sort()[0];
+    const last = list.map((m) => m.to).sort().at(-1);
+    const step = Math.min(45, 900 / (diffDays(first, last) + 1));
+    for (const m of list) {
+      for (let d = m.from; d <= m.to; d = addDays(d, 1)) {
+        const el = root.querySelector(`button[data-date="${d}"]`);
+        if (!el) continue;
+        el.classList.add('making');
+        if (m.dates.has(d)) el.classList.add('worked');
+        el.style.setProperty('--wait', `${Math.round(diffDays(first, d) * step)}ms`);
+      }
+    }
+    label.textContent = list.length > 1 ? `${makingText(list[0])} 외 ${list.length - 1}개` : makingText(list[0]);
+  };
+  const dateOf = (e) => e.target.closest?.('button[data-date]')?.dataset.date;
+  const enter = (e) => { const d = dateOf(e); if (d) show(d); else clear(); };
+  root.addEventListener('pointerover', (e) => { if (e.pointerType !== 'touch') enter(e); });
+  root.addEventListener('pointerleave', clear);
+  root.addEventListener('focusin', (e) => { if (e.target.matches(':focus-visible')) enter(e); });
+  root.addEventListener('focusout', clear);
+  return { reset() { shown = null; root.classList.remove('has-making'); } };
 }

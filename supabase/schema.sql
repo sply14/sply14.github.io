@@ -56,7 +56,7 @@ revoke execute on function public.catalog_set_layout(jsonb) from public, anon;
 grant execute on function public.catalog_set_layout(jsonb) to authenticated;
 
 -- 좌판: 같은 상품의 낱개 (kind = 'piece'). 대표 상품(parent_id)을 지우면 낱개도 지워진다.
--- 낱개는 catalog_events 트리거(kind = 'product'만)에 걸리지 않으므로 포트폴리오 개수에 들어가지 않는다.
+-- 낱개도 브랜드 로그의 만든 개수로 센다 (log.sql 맨 아래의 catalog_events 트리거).
 alter table public.catalog_items
   add column parent_id uuid references public.catalog_items(id) on delete cascade,
   add column no int;

@@ -1,11 +1,11 @@
 // 브랜드 로그 데이터 계층. 실제(Supabase)와 연습 모드(?local, 이 브라우저에만 저장)가 같은 메서드를 가집니다.
-import { SUPABASE_URL, SUPABASE_KEY, TABLE, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1795582444';
-import { addDays, kstToday } from './log-dates.js?v=1795582444';
+import { SUPABASE_URL, SUPABASE_KEY, TABLE, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1795604839';
+import { addDays, kstToday } from './log-dates.js?v=1795604839';
 
 export const DEFAULT_CHANNELS = ['DM', '스마트스토어', '후르츠패밀리'];
-// 낱개(piece)는 판매 기록의 사진을 찾을 때만 쓰인다 (포트폴리오 개수는 catalog_events로 셈)
+// 낱개(piece)는 사진·이름을 찾을 때 쓰인다 (만든 개수는 catalog_events로 셈)
 const pickItems = (rows) =>
-  rows.filter((r) => r.kind === 'product' || r.kind === 'piece').map(({ id, name, thumb_url, image_url, kind, hidden }) => ({ id, name, thumb_url, image_url, kind, hidden: !!hidden }));
+  rows.filter((r) => r.kind === 'product' || r.kind === 'piece').map(({ id, name, thumb_url, image_url, kind, hidden, parent_id, no }) => ({ id, name, thumb_url, image_url, kind, hidden: !!hidden, parent_id: parent_id ?? null, no: no ?? null }));
 
 export async function createLogApi() {
   return LOCAL ? localApi() : remoteApi();
@@ -40,10 +40,10 @@ async function remoteApi() {
     async load() {
       const [days, work, sales, events, items, options] = await Promise.all([
         all(() => sb.from('log_days').select('date').order('date')),
-        all(() => sb.from('log_work').select('id,date,title,minutes,span_key,created_at').order('created_at')),
+        all(() => sb.from('log_work').select('id,date,title,minutes,span_key,item_id,created_at').order('created_at')),
         all(() => sb.from('log_sales').select('id,date,item_id,title,channel,amount,qty,gift,created_at').order('created_at')),
-        all(() => sb.from('catalog_events').select('item_id,event,at').order('id')),
-        all(() => sb.from(TABLE).select('id,name,thumb_url,image_url,kind,hidden')),
+        all(() => sb.from('catalog_events').select('item_id,event,at,parent_id').order('id')),
+        all(() => sb.from(TABLE).select('id,name,thumb_url,image_url,kind,hidden,parent_id,no')),
         all(() => sb.from('log_options').select('key,value')),
       ]);
       const opt = Object.fromEntries(options.map((o) => [o.key, o.value]));
@@ -97,6 +97,8 @@ async function localApi() {
       event: 'added',
       at: new Date(`${addDays(today, -Math.round((products.length - i) * 3.3))}T12:00:00+09:00`).toISOString(),
     }));
+    // 좌판의 낱개는 오늘 올린 것으로
+    for (const p of catalog.filter((i) => i.kind === 'piece')) events.push({ item_id: p.id, event: 'added', at: new Date().toISOString(), parent_id: p.parent_id });
     db = { days: [], entries: [], work: [], sales: [], events, channels: DEFAULT_CHANNELS, settings: {} };
   }
   const persist = () => localStorage.setItem(KEY, JSON.stringify(db));
@@ -126,7 +128,7 @@ async function localApi() {
         db.days.sort((a, b) => (a.date < b.date ? -1 : 1));
       }
       if (draft.text?.trim()) db.entries.push({ id: crypto.randomUUID(), date, text: draft.text, created_at: now });
-      for (const w of draft.work) if (w.title?.trim()) db.work.push({ id: crypto.randomUUID(), date, title: w.title, minutes: w.minutes, span_key: w.span_key || null, created_at: now });
+      for (const w of draft.work) if (w.title?.trim()) db.work.push({ id: crypto.randomUUID(), date, title: w.title, minutes: w.minutes, span_key: w.span_key || null, item_id: w.item_id || null, created_at: now });
       for (const s of draft.sales) db.sales.push({ id: crypto.randomUUID(), date, item_id: s.item_id, title: s.title, channel: s.channel, amount: s.amount, qty: s.qty, gift: s.gift, created_at: now });
       const sold = draft.sales.filter((s) => s.mark_sold && s.item_id).map((s) => s.item_id);
       if (sold.length) {

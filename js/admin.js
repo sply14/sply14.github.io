@@ -1,5 +1,5 @@
-import { look, fitText, fitAll, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1795582444';
-import { nextNo, pad3 } from './stall.js?v=1795582444';
+import { look, fitText, fitAll, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1795604839';
+import { nextNo, pad3 } from './stall.js?v=1795604839';
 
 const $ = (s) => document.querySelector(s);
 const grid = $('#grid');
