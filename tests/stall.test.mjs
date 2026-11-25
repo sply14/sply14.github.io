@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { layout, pad3, resolvePiece, groupPieces, nextNo } from '../js/stall.js';
+import { layout, frame, aspectOf, pad3, resolvePiece, groupPieces, nextNo } from '../js/stall.js';
 
 const PC = { W: 1230, H: 660 };
 const PHONE = { W: 352, H: 690 };
@@ -88,4 +88,40 @@ test('groupPieces attaches pieces in number order and drops orphans', () => {
 test('nextNo continues after the highest number, never reusing a gap', () => {
   assert.equal(nextNo([]), 1);
   assert.equal(nextNo([{ no: 1 }, { no: 5 }, { no: 3 }]), 6);
+});
+
+const shown = (f, r, bw, bh) => { const w = Math.min(bw, bh * r) * f.s; return [w, w / r]; };
+
+test('frame leaves an unscaled 1x1 photo filling its box', () => {
+  const f = frame({ scale: 1, w: 1, h: 1, style: {} }, 1, 84, 80);
+  assert.ok(Math.abs(shown(f, 1, 84, 80)[0] - 80) < 0.01);
+  assert.equal(f.ox, 0);
+});
+
+test('frame shrinks a wide zoomed tile so the part visible in the tile fits the box', () => {
+  // 2x1 칸에 206%로 확대된 카드지갑 (사진 800x597)
+  const r = 800 / 597;
+  const f = frame({ scale: 2.06, w: 2, h: 1, style: { ox: 0, oy: -0.05 } }, r, 84, 80);
+  const [w, h] = shown(f, r, 84, 80);
+  const tile = Math.min(1.6, 0.8 * r) * 2.06; // 타일에서의 사진 폭 (칸 단위)
+  assert.ok(Math.abs((w / tile) * 2 - 84) < 0.01, 'the 2-cell window spans the box width');
+  assert.ok((h / (tile / r)) * 1 <= 80);
+  // 세로 위치도 같은 비율로 옮겨짐: -0.05 × 0.8칸
+  assert.ok(Math.abs(f.oy * 80 - -0.05 * 0.8 * (w / tile)) < 0.01);
+});
+
+test('wide photos get flatter rows, so they end up bigger and tighter', () => {
+  for (const n of [12, 30, 48]) {
+    const sq = layout(n, 740, 1060), wide = layout(n, 740, 1060, 2);
+    assert.ok(wide.rowH / wide.cell < sq.rowH / sq.cell, `n=${n}`);
+    assert.ok(wide.cell > sq.cell, `n=${n} ${JSON.stringify(wide)}`);
+    assert.equal(wide.label + n, wide.cols * wide.rows);
+    assert.ok(wide.rows * wide.rowH <= 1061);
+  }
+});
+
+test('aspect is the visible window of the tile', () => {
+  assert.ok(Math.abs(aspectOf({ scale: 2.06, w: 2, h: 1 }, 800 / 597) - 2) < 0.01);
+  assert.ok(Math.abs(aspectOf({ scale: 1, w: 1, h: 1 }, 1) - 1) < 0.01);
+  assert.ok(aspectOf({ scale: 1, w: 1, h: 1 }, 10) <= 2.2);
 });

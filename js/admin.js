@@ -1,5 +1,5 @@
-import { look, fitText, fitAll, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1795581990';
-import { nextNo, pad3 } from './stall.js?v=1795581990';
+import { look, fitText, fitAll, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1795582444';
+import { nextNo, pad3 } from './stall.js?v=1795582444';
 
 const $ = (s) => document.querySelector(s);
 const grid = $('#grid');
@@ -1039,8 +1039,8 @@ function fillPanel() {
   syncOutputs();
   const crop = $('#p-crop');
   const frame = parent || it;
-  crop.style.aspectRatio = `${it.w} / ${it.h}`;
-  crop.style.width = it.h > it.w ? `${Math.round((100 * it.w) / it.h)}%` : '100%';
+  crop.style.aspectRatio = `${frame.w} / ${frame.h}`;
+  crop.style.width = frame.h > frame.w ? `${Math.round((100 * frame.w) / frame.h)}%` : '100%';
   look(crop, frame);
   $('#p-delete').textContent = isText ? '텍스트 삭제' : isPiece ? '이 한 점 삭제' : '상품 삭제';
   form.elements.scale.value = Number(it.scale) || 1;

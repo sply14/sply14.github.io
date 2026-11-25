@@ -1,5 +1,5 @@
-import { h, fetchItems, formatPrice, safeUrl, look, fitText, fitAll, MOBILE_COLS } from './common.js?v=1795581990';
-import { groupPieces, resolvePiece, layout, pad3 } from './stall.js?v=1795581990';
+import { h, fetchItems, formatPrice, safeUrl, look, fitText, fitAll, MOBILE_COLS } from './common.js?v=1795582444';
+import { groupPieces, resolvePiece, layout, frame, aspectOf, pad3 } from './stall.js?v=1795582444';
 
 const grid = document.getElementById('grid');
 const detail = document.getElementById('detail');
@@ -581,6 +581,9 @@ function openStall(i, { instant = false } = {}) {
 
   const label = h('div', { class: 'label' }, h('span', { class: 't', text: parent.name || parent.code || '' }));
   const imgs = [];
+  // 사진 비율 (메인 타일의 대표 사진, 없으면 처음 받은 낱개 사진으로 정함)
+  const tileImg = thumbOf(i);
+  let ratio = tileImg?.naturalWidth ? tileImg.naturalWidth / tileImg.naturalHeight : 0;
   const cards = h(
     'div',
     { class: 'grid cards' },
@@ -602,10 +605,19 @@ function openStall(i, { instant = false } = {}) {
         img,
         h('span', { class: 'no', text: pad3(p.no) }),
       );
-      look(el, p);
+      img.addEventListener('load', () => (ratio ? frameImg(img) : fit()));
       return el;
     }),
   );
+  // 낱개 사진도 대표 상품의 타일에서 보이는 범위 그대로 (타일이 가로로 길거나 확대되어 있어도 잘리지 않게)
+  const frameImg = (img) => {
+    if (!img.naturalWidth || !img.offsetWidth) return;
+    const f = frame(parent, img.naturalWidth / img.naturalHeight, img.offsetWidth, img.offsetHeight);
+    const el = img.parentElement;
+    el.style.setProperty('--fit', f.s.toFixed(4));
+    el.style.setProperty('--ox', `${(f.ox * 100).toFixed(2)}%`);
+    el.style.setProperty('--oy', `${(f.oy * 100).toFixed(2)}%`);
+  };
   const closeBtn = h('button', { type: 'button', text: 'Close ×', onclick: () => closeStall() });
   const surface = h(
     'section',
@@ -621,7 +633,9 @@ function openStall(i, { instant = false } = {}) {
     const W = table.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
     const H = surface.clientHeight - surface.firstChild.offsetHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
     if (W <= 0 || H <= 0) return;
-    const l = layout(pieces.length, W, H);
+    const ready = imgs.find(([im]) => im.naturalWidth)?.[0];
+    ratio ||= ready ? ready.naturalWidth / ready.naturalHeight : 0;
+    const l = layout(pieces.length, W, H, ratio ? aspectOf(parent, ratio) : 1);
     cards.style.setProperty('--cols', l.cols);
     cards.style.setProperty('--rh', `${l.rowH}px`);
     cards.style.setProperty('--lw', l.label);
@@ -632,6 +646,7 @@ function openStall(i, { instant = false } = {}) {
     for (const [img, p] of imgs) {
       const src = (big && p.image_url) || p.thumb_url || p.image_url;
       if (img.getAttribute('src') !== src) img.src = src;
+      frameImg(img);
     }
     fitText(label);
   };

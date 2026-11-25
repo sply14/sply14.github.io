@@ -1,8 +1,8 @@
 // 연간 달력: 가로 1~31일 × 세로 1~12월 (폰 세로 화면에서는 가로 1~12월 × 세로 1~31일).
 // 칸 채우기(회색 단계), 며칠 이어진 작업 막대, 스티커(상품 누끼 사진만 컬러, 나머지 흑백)를 그립니다.
-import { h } from './common.js?v=1795581990';
-import { daysInMonth } from './log-dates.js?v=1795581990';
-import { cellLevel, spans, stickers } from './log-stats.js?v=1795581990';
+import { h } from './common.js?v=1795582444';
+import { daysInMonth } from './log-dates.js?v=1795582444';
+import { cellLevel, spans, stickers } from './log-stats.js?v=1795582444';
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 const pad = (n) => String(n).padStart(2, '0');
