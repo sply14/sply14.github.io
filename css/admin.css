@@ -130,6 +130,7 @@
   font-size: 9px;
   font-weight: 700;
   line-height: 1;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
   opacity: 0;
   pointer-events: none;
@@ -298,6 +299,13 @@
   line-height: 18px;
 }
 .p-details .d button:hover { background: var(--accent); }
+.p-details .piece { padding: 0; }
+.p-details .piece span { position: absolute; left: 3px; bottom: 2px; font-size: 9px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.p-details .piece img { padding: 3px 3px 11px !important; }
+.p-details button.piece { position: relative; right: auto; top: auto; width: 56px; height: 56px; background: none; color: inherit; }
+.p-details button.piece:hover { background: #f1f1f1; }
+.p-details .piece.gone img { opacity: .2; }
+.p-details .piece.gone span { color: var(--accent); }
 .p-details .plus { font-size: 20px; border-style: dashed; }
 .p-details .plus:hover { background: var(--ink); color: var(--paper); border-style: solid; }
 

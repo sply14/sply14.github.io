@@ -1,4 +1,5 @@
-import { h, fetchItems, formatPrice, safeUrl, look, fitAll, MOBILE_COLS } from './common.js?v=1795452031';
+import { h, fetchItems, formatPrice, safeUrl, look, fitText, fitAll, MOBILE_COLS } from './common.js?v=1795581990';
+import { groupPieces, resolvePiece, layout, pad3 } from './stall.js?v=1795581990';
 
 const grid = document.getElementById('grid');
 const detail = document.getElementById('detail');
@@ -6,13 +7,27 @@ const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const finePointer = matchMedia('(hover: hover) and (pointer: fine)').matches;
 
 let all = [];   // 그리드에 놓인 전체 (상품 + 텍스트)
-let items = []; // 상품만 (상세 팝업 대상)
+let products = []; // 메인 그리드의 상품만
+let stalls = new Map(); // 대표 상품 id → 낱개 목록 (번호순)
+let items = []; // 지금 화면의 상세 팝업 대상: 메인에서는 products, 좌판에서는 그 낱개들
+let stall = null; // 열려 있는 좌판 {i: 메인에서의 순번, parent, surface, cards}
 let current = -1;
 let photos = null; // 열려 있는 상세의 사진 넘기기 도구 {index, go, zone, count}
 let lastFocus = null;
 
 const pad2 = (n) => String(n).padStart(2, '0');
-const cellOf = (i) => grid.querySelector(`.item[data-i="${i}"]`);
+const cellOf = (i) => (stall ? stall.cards : grid).querySelector(`.item[data-i="${i}"]`);
+const piecesOf = (it) => stalls.get(it?.id) || null;
+const leftIn = (it) => (it.sold ? 0 : piecesOf(it).filter((p) => !p.sold).length);
+// 커서 가격표에 쓸 글자. 좌판은 남은 수를 함께
+function tagText(it) {
+  if (!piecesOf(it)) return formatPrice(it);
+  const left = leftIn(it);
+  return left ? [formatPrice(it), `× ${left}`].filter(Boolean).join(' ') : 'SOLD';
+}
+const isSold = (it) => (piecesOf(it) ? !leftIn(it) : !!it.sold);
+// 상세 팝업의 번호: 메인은 순서, 좌판은 낱개 번호
+const numOf = (it, i) => (stall ? pad3(it.no) : pad2(i + 1));
 const thumbOf = (i) => cellOf(i)?.querySelector('img');
 
 /* ───────── 그리드 ───────── */
@@ -29,8 +44,8 @@ function renderGrid() {
         look(label, it);
         return label;
       }
-      const i = items.indexOf(it);
-      const price = formatPrice(it);
+      const i = products.indexOf(it);
+      const price = tagText(it);
       const el = h(
         'button',
         {
@@ -39,20 +54,48 @@ function renderGrid() {
           'data-i': i,
           style: pos,
           'aria-label': [it.name, price].filter(Boolean).join(', ') || 'Product',
-          onclick: () => open(i),
+          onclick: () => (piecesOf(it) ? openStall(i) : open(i)),
         },
         h('img', { src: it.thumb_url || it.image_url, alt: '', loading: i < 40 ? 'eager' : 'lazy', decoding: 'async' }),
         price && h('span', { class: 'price', text: price }),
       );
       look(el, it);
+      if (piecesOf(it)) flick(el, it);
       return el;
     }),
   );
 }
 
+/* 좌판 타일: 마우스를 올리면(터치 기기는 저절로) 안에 든 낱개 사진이 차례로 넘어간다 */
+function flick(el, it) {
+  if (reduced) return;
+  const img = el.querySelector('img');
+  const rest = img.getAttribute('src');
+  const list = piecesOf(it).filter((p) => !p.sold).slice(0, 12).map((p) => p.thumb_url || p.image_url);
+  if (list.length < 2) return;
+  let k = -1, timer = 0, on = false;
+  const tick = async () => {
+    k = (k + 1) % list.length;
+    const im = new Image();
+    im.src = list[k];
+    await im.decode().catch(() => {}); // 다 받은 뒤에 바꿔서 깜빡이지 않게
+    if (!on) return;
+    if (im.naturalWidth && !stall && !document.hidden) img.src = list[k];
+    timer = setTimeout(tick, finePointer ? 320 : 1400);
+  };
+  const start = () => { if (!on) { on = true; tick(); } };
+  const stop = () => { on = false; clearTimeout(timer); k = -1; img.src = rest; };
+  if (finePointer) {
+    el.addEventListener('pointerenter', start);
+    el.addEventListener('pointerleave', stop);
+  } else {
+    new IntersectionObserver(([e]) => (e.isIntersecting ? start() : stop())).observe(el);
+  }
+}
+
 /* 커서를 따라다니는 가격 태그 + 사진이 커서 쪽으로 살짝 끌려오는 효과 (마우스 전용) */
 function setupPointer() {
-  if (!finePointer) return;
+  if (!finePointer) return null;
   const tag = h('div', { class: 'tag', 'aria-hidden': 'true' });
   document.body.append(tag);
   let hovered = null;
@@ -69,8 +112,8 @@ function setupPointer() {
     hovered.style.removeProperty('--px');
     hovered.style.removeProperty('--py');
     hovered.classList.remove('hot');
+    hovered.closest('.grid')?.classList.remove('focus');
     hovered = null;
-    grid.classList.remove('focus');
     tag.classList.remove('on');
   };
 
@@ -79,28 +122,30 @@ function setupPointer() {
   const EDGE = 0.14, KEEP = 0.08;
   const inside = (el, e, ratio) => {
     const r = el.getBoundingClientRect();
-    const m = (grid.clientWidth / (Number(getComputedStyle(grid).getPropertyValue('--cols')) || 10)) * ratio;
+    const root = el.closest('.grid');
+    const m = (root.clientWidth / (Number(getComputedStyle(root).getPropertyValue('--cols')) || 10)) * ratio;
     return e.clientX > r.left + m && e.clientX < r.right - m && e.clientY > r.top + m && e.clientY < r.bottom - m;
   };
 
-  grid.addEventListener('pointermove', (e) => {
+  const move = (e) => {
     if (e.pointerType !== 'mouse') return;
+    const root = e.currentTarget;
     let el = null;
     if (hovered && inside(hovered, e, KEEP)) el = hovered;
     else {
       el = document.elementsFromPoint(e.clientX, e.clientY)
-        .find((n) => n.classList.contains('item') && grid.contains(n) && inside(n, e, EDGE)) || null;
+        .find((n) => n.classList.contains('item') && root.contains(n) && inside(n, e, EDGE)) || null;
     }
     if (el !== hovered) {
       leave();
       hovered = el;
       if (el) {
         el.classList.add('hot');
-        grid.classList.add('focus');
+        root.classList.add('focus');
         const it = items[el.dataset.i];
-        const price = formatPrice(it);
+        const price = tagText(it);
         tag.textContent = price;
-        tag.classList.toggle('sold', !!it.sold);
+        tag.classList.toggle('sold', isSold(it));
         tag.classList.toggle('on', !!price);
       }
     }
@@ -110,10 +155,14 @@ function setupPointer() {
       el.style.setProperty('--py', (((e.clientY - r.top) / r.height) * 2 - 1).toFixed(3));
     }
     if (el) follow(e); // 사라지는 중에는 제자리에서 사라짐
-  });
-  grid.addEventListener('pointerleave', leave);
-  addEventListener('scroll', leave, { passive: true });
-  return leave;
+  };
+  const watch = (root) => {
+    root.addEventListener('pointermove', move);
+    root.addEventListener('pointerleave', leave);
+  };
+  watch(grid);
+  addEventListener('scroll', leave, { passive: true, capture: true });
+  return { leave, watch };
 }
 
 /* 커스텀 포인터: 맞춤표(+)가 누를 수 있는 곳에서 원으로 펼쳐지고, 확대 가능한 사진 위에서는 +/− */
@@ -299,7 +348,7 @@ function renderDetail(dir = 0) {
       h('div', { class: 'run' }, h('span', { text: it.code || '' }), h('span', { class: 'sold-mark', text: it.sold ? 'Sold' : '' })),
       stage,
       thumbs,
-      h('div', { class: 'run' }, h('span', { text: pad2(current + 1) }), count),
+      h('div', { class: 'run' }, h('span', { text: numOf(it, current) }), count),
     ),
     h(
       'section',
@@ -309,7 +358,7 @@ function renderDetail(dir = 0) {
       h(
         'div',
         { class: 'body' },
-        h('h1', { class: 'rise', style: `--i:${n++}`, text: it.name || it.code || '' }),
+        h('h1', { class: 'rise', style: `--i:${n++}`, text: [it.name || it.code || '', stall && pad3(it.no)].filter(Boolean).join(' ') }),
         h(
           'dl',
           {},
@@ -320,7 +369,7 @@ function renderDetail(dir = 0) {
         ),
       ),
       buy && !it.sold &&
-        h('a', { class: 'buy rise', style: `--i:${n++}`, href: buy, target: '_blank', rel: 'noopener' }, h('span', { text: 'Order' }), h('span', { text: '→' })),
+        h('a', { class: 'buy rise', style: `--i:${n++}`, href: buy, target: '_blank', rel: 'noopener' }, h('span', { text: stall ? `Order ${pad3(it.no)}` : 'Order' }), h('span', { text: '→' })),
       h(
         'div',
         { class: 'run' },
@@ -455,7 +504,7 @@ function withTransition(update) {
 function open(i, { instant = false } = {}) {
   if (current >= 0) return;
   lastFocus = document.activeElement;
-  hideTag?.();
+  pointer?.leave();
   const thumb = thumbOf(i);
   const show = (morph) => {
     if (thumb) thumb.style.viewTransitionName = '';
@@ -500,9 +549,9 @@ function close() {
     detail.hidden = true;
     detail.replaceChildren();
     detail.style.background = '';
-    document.documentElement.style.overflow = '';
+    document.documentElement.style.overflow = stall ? 'hidden' : '';
     if (morph) thumb.style.viewTransitionName = 'hero';
-    history.replaceState(null, '', location.pathname + location.search);
+    history.replaceState(null, '', location.pathname + location.search + (stall ? `#${stall.parent.id}` : ''));
   }).then(() => {
     if (thumb) thumb.style.viewTransitionName = '';
   });
@@ -518,39 +567,158 @@ function step(d) {
   cellOf(current)?.scrollIntoView({ block: 'nearest' });
 }
 
+/* ───────── 좌판 ───────── */
+
+// 그리드 화면 전체가 한 상품의 낱개들로 바뀐다. 칸 크기는 개수와 화면에 맞춰 정해진다
+function openStall(i, { instant = false } = {}) {
+  const parent = products[i];
+  const list = piecesOf(parent);
+  if (stall || current >= 0 || !list) return;
+  pointer?.leave();
+  const back = document.activeElement;
+  const pieces = list.map((p) => resolvePiece(parent, p));
+  const left = pieces.filter((p) => !p.sold).length;
+
+  const label = h('div', { class: 'label' }, h('span', { class: 't', text: parent.name || parent.code || '' }));
+  const imgs = [];
+  const cards = h(
+    'div',
+    { class: 'grid cards' },
+    label,
+    pieces.map((p, n) => {
+      const img = h('img', { alt: '', loading: n < 60 ? 'eager' : 'lazy', decoding: 'async' });
+      imgs.push([img, p]);
+      const price = formatPrice(p);
+      const el = h(
+        'button',
+        {
+          class: `item${p.sold ? ' gone' : ''}`,
+          type: 'button',
+          'data-i': n,
+          style: `--d:${Math.min(n, 40) * 0.6}`,
+          'aria-label': [p.name, pad3(p.no), price].filter(Boolean).join(', '),
+          onclick: () => open(n),
+        },
+        img,
+        h('span', { class: 'no', text: pad3(p.no) }),
+      );
+      look(el, p);
+      return el;
+    }),
+  );
+  const closeBtn = h('button', { type: 'button', text: 'Close ×', onclick: () => closeStall() });
+  const surface = h(
+    'section',
+    { class: 'stall', role: 'dialog', 'aria-modal': 'true', 'aria-label': parent.name || 'Stall' },
+    h('div', { class: 'run' }, h('span', { text: `${left} / ${pieces.length}` }), closeBtn),
+    h('div', { class: 'table' }, cards),
+  );
+
+  const fit = () => {
+    if (!surface.isConnected) return;
+    const table = surface.lastChild;
+    const cs = getComputedStyle(table);
+    const W = table.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const H = surface.clientHeight - surface.firstChild.offsetHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    if (W <= 0 || H <= 0) return;
+    const l = layout(pieces.length, W, H);
+    cards.style.setProperty('--cols', l.cols);
+    cards.style.setProperty('--rh', `${l.rowH}px`);
+    cards.style.setProperty('--lw', l.label);
+    cards.style.setProperty('--lf', `${Math.min(l.rowH * 0.5, l.label * l.cell * 0.36, 120)}px`);
+    cards.classList.toggle('dense', l.cell < 130);
+    // 칸이 크면 원본, 작으면 그리드용 사진
+    const big = l.cell * devicePixelRatio > 900;
+    for (const [img, p] of imgs) {
+      const src = (big && p.image_url) || p.thumb_url || p.image_url;
+      if (img.getAttribute('src') !== src) img.src = src;
+    }
+    fitText(label);
+  };
+
+  const thumb = thumbOf(i);
+  const show = () => {
+    stall = { i, parent, surface, cards, back, observer: new ResizeObserver(fit) };
+    items = pieces;
+    document.body.append(surface);
+    document.documentElement.style.overflow = 'hidden';
+    fit();
+    stall.observer.observe(surface);
+    pointer?.watch(cards);
+    closeBtn.focus({ preventScroll: true });
+    history.replaceState(null, '', `#${parent.id}`);
+  };
+  document.fonts?.ready.then(fit);
+  if (instant) return show();
+  // 누른 타일의 사진이 첫 낱개 자리로 옮겨가며 나머지가 깔린다
+  if (thumb) thumb.style.viewTransitionName = 'hero';
+  withTransition(() => {
+    if (thumb) thumb.style.viewTransitionName = '';
+    show();
+    if (imgs[0] && !reduced) imgs[0][0].style.viewTransitionName = 'hero';
+  }).then(() => {
+    if (thumb) thumb.style.viewTransitionName = '';
+    imgs[0]?.[0].style.removeProperty('view-transition-name');
+  });
+}
+
+function closeStall() {
+  if (!stall || current >= 0) return;
+  pointer?.leave();
+  const { surface, back, observer } = stall;
+  observer.disconnect();
+  withTransition(() => {
+    surface.remove();
+    stall = null;
+    items = products;
+    document.documentElement.style.overflow = '';
+    history.replaceState(null, '', location.pathname + location.search);
+  });
+  back?.focus?.({ preventScroll: true });
+}
+
 detail.addEventListener('click', (e) => {
   if (e.target === detail) close();
 });
 
 addEventListener('keydown', (e) => {
-  if (current < 0) return;
+  if (current < 0) {
+    if (stall && e.key === 'Escape') closeStall();
+    return;
+  }
   if (e.key === 'Escape') close();
   // 좌우 화살표: 먼저 이 상품의 사진을 넘기고, 끝에 닿으면 이전/다음 상품으로
   else if (e.key === 'ArrowRight') photos?.go(photos.index() + 1) || step(1);
   else if (e.key === 'ArrowLeft') (photos?.index() > 0 && photos.go(photos.index() - 1)) || step(-1);
 });
 
-let hideTag;
+let pointer;
 try {
   all = await fetchItems();
   all.sort((a, b) => a.y - b.y || a.x - b.x);
-  items = all.filter((it) => it.kind !== 'text');
+  ({ products: all, stalls } = groupPieces(all));
+  products = items = all.filter((it) => it.kind !== 'text');
   renderGrid();
   fitAll(grid, '.label');
-  hideTag = setupPointer();
+  pointer = setupPointer();
   // 마우스가 상품 위에 잠깐 머물면 그 상품의 첫 사진 비율을 미리 알아둠 (그냥 스쳐 지나가면 받지 않음)
   let warmTimer;
   grid.addEventListener('pointerover', (e) => {
     clearTimeout(warmTimer);
     if (e.pointerType !== 'mouse') return;
-    const it = items[e.target.closest?.('.item')?.dataset.i];
-    if (it) warmTimer = setTimeout(() => preload(it), 150);
+    const it = products[e.target.closest?.('.item')?.dataset.i];
+    if (it && !piecesOf(it)) warmTimer = setTimeout(() => preload(it), 150);
   }, { passive: true });
   grid.addEventListener('pointerleave', () => clearTimeout(warmTimer), { passive: true });
   setupCursor();
   const id = decodeURIComponent(location.hash.slice(1));
-  const i = id ? items.findIndex((it) => String(it.id) === id) : -1;
-  if (i >= 0) open(i, { instant: true });
+  // 낱개의 주소면 그 좌판을 먼저 깔고 연다
+  const owner = [...stalls].find(([, list]) => list.some((p) => String(p.id) === id))?.[0];
+  const i = id ? products.findIndex((it) => String(it.id) === (owner ?? id)) : -1;
+  if (i >= 0 && piecesOf(products[i])) {
+    openStall(i, { instant: true });
+    if (owner) open(items.findIndex((p) => String(p.id) === id), { instant: true });
+  } else if (i >= 0) open(i, { instant: true });
 } catch (err) {
   console.error(err);
 }

@@ -47,7 +47,21 @@ export function demoItems() {
     id: `demo-text-${i + 1}`, kind: 'text', label, scale: 1, x, y, w, h,
     name: '', code: '', price: null, sold: false, size: '', material: '', description: '', buy_url: '', image_url: '', thumb_url: '', detail_urls: [],
   }));
-  return [...products(), ...labels];
+  return [...products(), ...labels, ...stallDemo()];
+}
+
+// 좌판 예시: 색이 조금씩 다른 스툴 14점
+function stallDemo() {
+  const base = { code: '', size: '', material: '', description: '', buy_url: '', detail_urls: [], label: '', scale: 1, style: {}, x: 0, y: 0, w: 1, h: 1, sold: false, price: null, name: '' };
+  const tones = ['#c9b79c', '#bda684', '#d4c4ab', '#b59a74', '#cdb997', '#c2ab88', '#dccdb6', '#a98d66', '#c6b08e', '#d0bfa4', '#b8a07c', '#cbb593', '#bfa983', '#d8c8af'];
+  const url = shapes.stool(tones[0]);
+  return [
+    { ...base, id: 'demo-stall', kind: 'product', name: 'Hand Stool', code: 'DM-19', price: 260000, size: 'W 360 × H 440 mm', material: 'Wood', description: '한 점씩 색이 다른 좌판 예시입니다.', buy_url: 'https://example.com', image_url: url, thumb_url: url, x: 7, y: 2 },
+    ...tones.map((c, i) => {
+      const u = shapes.stool(c);
+      return { ...base, id: `demo-piece-${i + 1}`, kind: 'piece', parent_id: 'demo-stall', no: i + 1, sold: i === 2 || i === 8, image_url: u, thumb_url: u };
+    }),
+  ];
 }
 
 function products() {

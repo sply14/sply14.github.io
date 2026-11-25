@@ -54,3 +54,14 @@ returns void language sql security invoker set search_path = '' as $$
 $$;
 revoke execute on function public.catalog_set_layout(jsonb) from public, anon;
 grant execute on function public.catalog_set_layout(jsonb) to authenticated;
+
+-- 좌판: 같은 상품의 낱개 (kind = 'piece'). 대표 상품(parent_id)을 지우면 낱개도 지워진다.
+-- 낱개는 catalog_events 트리거(kind = 'product'만)에 걸리지 않으므로 포트폴리오 개수에 들어가지 않는다.
+alter table public.catalog_items
+  add column parent_id uuid references public.catalog_items(id) on delete cascade,
+  add column no int;
+alter table public.catalog_items drop constraint catalog_items_kind_check;
+alter table public.catalog_items
+  add constraint catalog_items_kind_check check (kind in ('product','text','piece')),
+  add constraint catalog_items_piece check ((kind = 'piece') = (parent_id is not null) and (kind = 'piece') = (no is not null) and (no is null or no >= 1));
+create unique index catalog_items_piece_no on public.catalog_items (parent_id, no) where kind = 'piece';

@@ -1,4 +1,5 @@
-import { look, fitText, fitAll, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1795452031';
+import { look, fitText, fitAll, FONTS, h, SUPABASE_URL, SUPABASE_KEY, TABLE, BUCKET, COLS, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1795581990';
+import { nextNo, pad3 } from './stall.js?v=1795581990';
 
 const $ = (s) => document.querySelector(s);
 const grid = $('#grid');
@@ -17,6 +18,9 @@ const PACK_KEY = 'catalog-auto-pack';
 let autoPack = localStorage.getItem(PACK_KEY) !== 'off';
 let order = [];        // 채우기 순서 (상품 id)
 let hiddenItems = [];  // 숨긴 상품 (사이트에 안 보이고 그리드 칸도 차지하지 않음, 복구 가능)
+let pieces = [];       // 좌판의 낱개 전부 (그리드에는 놓이지 않음)
+const piecesOf = (it) => pieces.filter((p) => p.parent_id === it?.id).sort((a, b) => a.no - b.no);
+const parentOf = (p) => items.find((i) => i.id === p?.parent_id);
 const picked = new Set(); // 여러 개 선택된 상품 id
 
 /* ───────── 데이터 계층 ───────── */
@@ -103,7 +107,12 @@ async function localApi() {
     async insert(row) {
       const full = { id: crypto.randomUUID(), kind: 'product', label: '', scale: 1, style: {}, name: '', code: '', price: null, sold: false, size: '', material: '', description: '', buy_url: '', detail_urls: [], ...row };
       data.push(full);
-      save();
+      try {
+        save();
+      } catch (err) {
+        data.pop(); // 브라우저 저장 공간이 가득 참: 화면에만 남지 않게 되돌림
+        throw err;
+      }
       return structuredClone(full);
     },
     async update(id, patch) { Object.assign(data.find((d) => d.id === id), patch); save(); },
@@ -111,8 +120,8 @@ async function localApi() {
       for (const { id, ...pos } of changes) Object.assign(data.find((d) => d.id === id), pos);
       save();
     },
-    async remove(id) { data = data.filter((d) => d.id !== id); save(); },
-    async removeMany(ids) { data = data.filter((d) => !ids.includes(d.id)); save(); },
+    async remove(id) { data = data.filter((d) => d.id !== id && d.parent_id !== id); save(); },
+    async removeMany(ids) { data = data.filter((d) => !ids.includes(d.id) && !ids.includes(d.parent_id)); save(); },
     async hide(ids) { data.filter((d) => ids.includes(d.id)).forEach((d) => (d.hidden = true)); save(); },
     async restore(rows) {
       for (const { id, ...pos } of rows) Object.assign(data.find((d) => d.id === id), pos, { hidden: false });
@@ -327,10 +336,13 @@ function scheduleResync() {
 // DB에서 전체를 다시 읽어 화면을 그림
 async function reload() {
   const all = await api.list();
-  items = all.filter((i) => !i.hidden);
-  hiddenItems = all.filter((i) => i.hidden);
+  pieces = all.filter((i) => i.kind === 'piece');
+  items = all.filter((i) => i.kind !== 'piece' && !i.hidden);
+  hiddenItems = all.filter((i) => i.kind !== 'piece' && i.hidden);
   order = readingOrder();
-  selected = selected && items.find((i) => i.id === selected.id);
+  selected = selected && [...items, ...pieces].find((i) => i.id === selected.id);
+  if (selected?.kind === 'piece' && !parentOf(selected)) selected = null;
+  panel.hidden = !selected;
   for (const id of [...picked]) if (!items.some((i) => i.id === id)) picked.delete(id);
   render();
   renderHidden();
@@ -430,7 +442,8 @@ function render() {
       grid.append(el);
     }
     el.classList.toggle('selected', selected?.id === it.id);
-    el.querySelector('.badge').textContent = `${it.w}×${it.h}`;
+    const n = piecesOf(it).length;
+    el.querySelector('.badge').textContent = `${it.w}×${it.h}${n ? ` · 좌판 ${n}` : ''}`;
     if (it.kind === 'text') {
       el.querySelector('.t').textContent = (it.label || '').trimEnd();
     } else {
@@ -805,6 +818,55 @@ async function addDetailsNow(it, files) {
   if (selected === it) fillPanel();
 }
 
+// 좌판의 낱개: 사진 한 장이 한 점. 상세 사진과 같은 줄에 세워 번호가 겹치지 않게 한다
+function addPieces(files, it = selected) {
+  const job = detailQueue.then(() => addPiecesNow(it, files));
+  detailQueue = job.catch(() => {});
+  return job;
+}
+
+async function addPiecesNow(it, files) {
+  if (!it || it.kind !== 'product') return;
+  files = [...files].filter(isImage).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  if (!files.length) return status('올릴 수 있는 사진 파일이 없습니다 (PNG · JPG · WebP · AVIF)', true);
+  let done = 0;
+  const failed = [];
+  for (const [i, f] of files.entries()) {
+    status(`좌판에 올리는 중… ${i + 1}/${files.length}`);
+    const urls = [];
+    try {
+      const { full, thumb } = await prepare(f);
+      urls.push(await api.upload(full));
+      urls.push(await api.upload(thumb));
+      const row = await api.insert({ kind: 'piece', parent_id: it.id, no: nextNo(piecesOf(it)), image_url: urls[0], thumb_url: urls[1], x: 0, y: 0, w: 1, h: 1 });
+      pieces.push(row);
+      done++;
+      if (selected === it) fillPieces(it);
+    } catch (err) {
+      console.error(err);
+      api.removeFiles(urls); // 등록에 실패하면 방금 올린 사진도 정리
+      failed.push(f.name);
+    }
+  }
+  if (failed.length) status(failMessage(done, failed), true);
+  else status(`좌판에 ${done}점 추가됨`);
+  render();
+}
+
+function fillPieces(it) {
+  $('#p-pieces').replaceChildren(
+    ...piecesOf(it).map((p) =>
+      h(
+        'button',
+        { type: 'button', class: `d piece${p.sold ? ' gone' : ''}`, 'aria-label': `${pad3(p.no)} 수정`, onclick: () => select(p) },
+        h('img', { src: p.thumb_url || p.image_url, alt: '' }),
+        h('span', { text: pad3(p.no) }),
+      ),
+    ),
+    h('button', { type: 'button', class: 'plus', 'aria-label': '좌판에 추가', text: '+', onclick: () => pick({ kind: 'piece' }) }),
+  );
+}
+
 const isImage = (f) => f.type.startsWith('image/') || /\.(png|jpe?g|webp|avif|hei[cf])$/i.test(f.name);
 
 // 끌어다 놓은 것에서 사진 파일을 모두 꺼냄 (폴더를 통째로 놓으면 그 안의 사진까지)
@@ -836,6 +898,7 @@ fileInput.addEventListener('change', async () => {
   if (!files.length || !target) return;
   if (target.kind === 'new') await addFiles(files, target.cell);
   else if (target.kind === 'main') await replaceMain(files[0]);
+  else if (target.kind === 'piece') await addPieces(files);
   else await addDetails(files);
 });
 
@@ -918,7 +981,11 @@ panel.addEventListener('drop', (e) => {
   e.preventDefault();
   e.stopPropagation();
   panel.classList.remove('dropping');
-  if (selected && selected.kind !== 'text') droppedFiles(e.dataTransfer).then(addDetails);
+  if (!selected || selected.kind === 'text') return;
+  const it = selected;
+  // 좌판 구역에 놓으면 낱개로, 나머지 자리는 상세 사진으로
+  const toStall = it.kind === 'product' && e.target.closest('#p-stall');
+  droppedFiles(e.dataTransfer).then((files) => (toStall ? addPieces(files, it) : addDetails(files)));
 });
 addEventListener('dragover', (e) => e.preventDefault());
 addEventListener('drop', (e) => e.preventDefault());
@@ -943,7 +1010,19 @@ function select(it) {
 function fillPanel() {
   const it = selected;
   const isText = it.kind === 'text';
-  $('#p-size').textContent = `${isText ? '텍스트 · ' : ''}${it.w} × ${it.h} 칸`;
+  const isPiece = it.kind === 'piece';
+  const parent = isPiece ? parentOf(it) : null;
+  $('#p-size').textContent = isPiece ? `${nameOf(parent || {})} · ${pad3(it.no)}` : `${isText ? '텍스트 · ' : ''}${it.w} × ${it.h} 칸`;
+  // 낱개는 칸·확대가 없고, 비워 둔 값은 대표 상품의 값(흐린 글씨)을 쓴다
+  $('#p-back').hidden = !isPiece;
+  $('#p-stall').hidden = isPiece;
+  $('#f-scale').hidden = $('#f-size').hidden = $('#p-hide').hidden = $('#p-reset').hidden = isPiece;
+  for (const k of ['name', 'code', 'price', 'size', 'material', 'description', 'buy_url']) {
+    const el = form.elements[k];
+    el.dataset.hint ??= el.placeholder;
+    el.placeholder = isPiece ? String(parent?.[k] ?? '') : el.dataset.hint;
+  }
+  if (it.kind === 'product') fillPieces(it);
   $('#f-text').hidden = !isText;
   $('#f-product').hidden = isText;
   $('#scale-label').textContent = isText ? '글자 크기' : '사진 확대';
@@ -959,10 +1038,11 @@ function fillPanel() {
   form.elements.st_skew.value = Number(st.skew) || 0;
   syncOutputs();
   const crop = $('#p-crop');
+  const frame = parent || it;
   crop.style.aspectRatio = `${it.w} / ${it.h}`;
   crop.style.width = it.h > it.w ? `${Math.round((100 * it.w) / it.h)}%` : '100%';
-  look(crop, it);
-  $('#p-delete').textContent = isText ? '텍스트 삭제' : '상품 삭제';
+  look(crop, frame);
+  $('#p-delete').textContent = isText ? '텍스트 삭제' : isPiece ? '이 한 점 삭제' : '상품 삭제';
   form.elements.scale.value = Number(it.scale) || 1;
   $('#scale-out').textContent = `${Math.round((Number(it.scale) || 1) * 100)}%`;
   $('#p-img').src = it.thumb_url || it.image_url || '';
@@ -1112,7 +1192,7 @@ form.addEventListener('input', (e) => {
 
   crop.addEventListener('pointerdown', (e) => {
     const it = selected;
-    if (!it || it.kind === 'text') return;
+    if (it?.kind !== 'product') return;
     e.preventDefault();
     crop.setPointerCapture(e.pointerId);
     pan = { it, sx: e.clientX, sy: e.clientY, ...current(it) };
@@ -1138,7 +1218,7 @@ form.addEventListener('input', (e) => {
 
   crop.addEventListener('wheel', (e) => {
     const it = selected;
-    if (!it || it.kind === 'text') return;
+    if (it?.kind !== 'product') return;
     e.preventDefault();
     const c = current(it);
     const scale = Math.max(0.5, Math.min(4, c.scale * Math.exp(-e.deltaY * 0.0015)));
@@ -1157,6 +1237,7 @@ form.addEventListener('input', (e) => {
 
 $('#p-replace').addEventListener('click', () => pick({ kind: 'main' }, false));
 $('#p-close').addEventListener('click', () => select(null));
+$('#p-back').addEventListener('click', () => select(parentOf(selected) || null));
 
 /* ───────── 삭제 · 숨기기 · 복구 ───────── */
 
@@ -1172,28 +1253,34 @@ async function exclusive(fn) {
   }
 }
 
-const nameOf = (it) => (it.kind === 'text' ? it.label?.trim() : it.name || it.code) || (it.kind === 'text' ? '텍스트' : '이름 없는 상품');
+const nameOf = (it) => (it.kind === 'text' ? it.label?.trim() : it.kind === 'piece' ? `${parentOf(it)?.name || ''} ${pad3(it.no)}`.trim() : it.name || it.code) || (it.kind === 'text' ? '텍스트' : '이름 없는 상품');
 
 const deleteItems = (list) => exclusive(() => deleteItemsNow(list));
 async function deleteItemsNow(list) {
   if (!list.length) return;
   const what = list.length === 1 ? `"${nameOf(list[0])}"을(를)` : `${list.length}개를`;
-  if (!confirm(`${what} 삭제할까요? 되돌릴 수 없습니다.\n(나중에 다시 쓸 거라면 '숨기기'를 쓰세요)`)) return;
   const ids = new Set(list.map((i) => i.id));
+  // 대표 상품을 지우면 좌판의 낱개도 함께 지워진다 (DB에서는 parent_id의 cascade)
+  const under = pieces.filter((p) => ids.has(p.parent_id));
+  const single = list.length === 1 && list[0].kind === 'piece';
+  const back = single ? parentOf(list[0]) : null;
+  const note = single ? '' : "\n(나중에 다시 쓸 거라면 '숨기기'를 쓰세요)";
+  if (!confirm(`${what} 삭제할까요?${under.length ? ` 좌판의 ${under.length}점도 함께 지워집니다.` : ''} 되돌릴 수 없습니다.${note}`)) return;
   try {
     await run('삭제 중…', () => api.removeMany([...ids]));
   } catch {
     return;
   }
-  api.removeFiles(list.flatMap((it) => [it.image_url, it.thumb_url, ...(it.detail_urls || [])]));
+  api.removeFiles([...list, ...under].flatMap((it) => [it.image_url, it.thumb_url, ...(it.detail_urls || [])]));
   items = items.filter((i) => !ids.has(i.id));
   hiddenItems = hiddenItems.filter((i) => !ids.has(i.id));
+  pieces = pieces.filter((p) => !ids.has(p.id) && !ids.has(p.parent_id));
   order = order.filter((id) => !ids.has(id));
   clearPicks();
-  select(null);
+  select(back);
   render();
   renderHidden();
-  repack();
+  if (!single) repack();
 }
 
 // 숨기기: 사이트에서 안 보이고 칸도 비워짐. 아래 '숨긴 항목'에서 언제든 복구

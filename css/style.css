@@ -247,6 +247,63 @@ html.has-cur, html.has-cur * { cursor: none !important; }
   .label { font-size: calc(100cqw / var(--cols) * .36 * var(--fit, 1) * var(--mk, 1) * var(--auto, 1)); }
 }
 
+/* ───────── 좌판: 같은 상품의 낱개들 ───────── */
+
+.stall {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: var(--paper);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+}
+.stall > .run { position: sticky; top: 0; z-index: 3; flex: none; height: 44px; padding: 0 var(--pad); background: var(--paper); }
+.stall .table { flex: 1 0 auto; padding: 0 var(--pad) var(--pad); display: grid; align-content: center; }
+/* 열 수·칸 높이·제목 칸 수는 catalog.js가 개수와 화면에 맞춰 정함 */
+.stall .cards {
+  container-type: inline-size;
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+  grid-auto-rows: var(--rh);
+  grid-auto-flow: row;
+}
+.stall .cards .label {
+  grid-column: span var(--lw);
+  grid-row: auto;
+  font-size: calc(var(--lf) * var(--auto, 1));
+  justify-content: flex-start;
+  text-align: left;
+  padding: 0 0 0 1.5%;
+}
+.stall .cards .label .t { transform-origin: 0 50%; }
+.stall .cards .item { grid-column: auto; grid-row: auto; }
+.stall .cards .item img { inset: 6% 8% 14%; width: 84%; height: 80%; }
+.stall .cards .no {
+  position: absolute;
+  left: 8%;
+  bottom: 4%;
+  z-index: 1;
+  font-size: clamp(9px, calc(100cqw / var(--cols) * .045), 13px);
+  font-weight: 700;
+  letter-spacing: .04em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+/* 많을 때: 사진을 칸에 꽉 채우고 번호는 작게 */
+.stall .cards.dense .item img { inset: 3% 3% 14%; width: 94%; height: 83%; }
+.stall .cards.dense .no { left: 4%; bottom: 3%; }
+/* 팔린 것: 자리는 남기고 번호만 빨강 */
+.stall .cards .gone img { opacity: .18; }
+.stall .cards .gone .no { color: var(--accent); }
+.stall .cards .no { transition: opacity .3s ease; }
+@media (hover: hover) and (pointer: fine) {
+  .stall .cards.focus .item:not(.hot) .no { opacity: .18; }
+}
+@media (max-width: 767px) {
+  .stall > .run { padding: 0 18px; }
+}
+
 /* ───────── 상세 팝업 ───────── */
 
 .detail {
