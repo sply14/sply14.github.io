@@ -1,9 +1,9 @@
 // 월간·주간·일간 보기. 연간 달력(log-calendar.js)과 같은 데이터로 그린다.
-import { h } from './common.js?v=1795604839';
-import { addDays, monthWeeks, weekday } from './log-dates.js?v=1795604839';
-import { daySummary, stickers, levelByDate, portfolioByDate } from './log-stats.js?v=1795604839';
-import { floor1 } from './log-level.js?v=1795604839';
-import { starSvg, fitGrid } from './log-calendar.js?v=1795604839';
+import { h } from './common.js?v=1795605176';
+import { addDays, monthWeeks, weekday } from './log-dates.js?v=1795605176';
+import { daySummary, stickers, levelByDate, portfolioByDate } from './log-stats.js?v=1795605176';
+import { floor1 } from './log-level.js?v=1795605176';
+import { starSvg, fitGrid } from './log-calendar.js?v=1795605176';
 
 const WEEK = ['월', '화', '수', '목', '금', '토', '일'];
 const won = (n) => '₩' + Math.round(n).toLocaleString('ko-KR');
@@ -73,7 +73,7 @@ export function renderMonth(root, year, month, data, levels, { today, onPick, ti
       s.revenue ? h('span', { class: 'line won', text: won(s.revenue) }) : null,
     ));
   }
-  fitGrid(root, { cols: 7, max: 920 });
+  fitGrid(root, { cols: 7 });
   return periodSum(data, `${year}-${String(month).padStart(2, '0')}-01`, to);
 }
 

@@ -1,12 +1,12 @@
 // 브랜드 로그 페이지 (관리자 전용). 평문 기록 → 연간 달력 → 브랜드 레벨.
-import { LOCAL } from './common.js?v=1795604839';
-import { kstToday, addDays, daysInMonth, weekStart, weekday } from './log-dates.js?v=1795604839';
-import { DEFAULT_METRICS, TIERS, floor1 } from './log-level.js?v=1795604839';
-import { levelByDate } from './log-stats.js?v=1795604839';
-import { createLogApi } from './log-api.js?v=1795604839';
-import { renderYear, highlightDay, popStickers, bindMakingHover } from './log-calendar.js?v=1795604839';
-import { drawLevel, drawRecords, openDay, openSettings, celebrate, levelAt } from './log-panels.js?v=1795604839';
-import { renderMonth, renderWeek, renderDay } from './log-views.js?v=1795604839';
+import { LOCAL } from './common.js?v=1795605176';
+import { kstToday, addDays, daysInMonth, weekStart, weekday } from './log-dates.js?v=1795605176';
+import { DEFAULT_METRICS, TIERS, floor1 } from './log-level.js?v=1795605176';
+import { levelByDate } from './log-stats.js?v=1795605176';
+import { createLogApi } from './log-api.js?v=1795605176';
+import { renderYear, highlightDay, popStickers, bindMakingHover } from './log-calendar.js?v=1795605176';
+import { drawLevel, drawRecords, openDay, openSettings, celebrate, levelAt } from './log-panels.js?v=1795605176';
+import { renderMonth, renderWeek, renderDay } from './log-views.js?v=1795605176';
 
 const $ = (s) => document.querySelector(s);
 const yearEl = $('#year');

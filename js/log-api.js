@@ -1,6 +1,6 @@
 // 브랜드 로그 데이터 계층. 실제(Supabase)와 연습 모드(?local, 이 브라우저에만 저장)가 같은 메서드를 가집니다.
-import { SUPABASE_URL, SUPABASE_KEY, TABLE, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1795604839';
-import { addDays, kstToday } from './log-dates.js?v=1795604839';
+import { SUPABASE_URL, SUPABASE_KEY, TABLE, LOCAL, LOCAL_KEY, loadLocal } from './common.js?v=1795605176';
+import { addDays, kstToday } from './log-dates.js?v=1795605176';
 
 export const DEFAULT_CHANNELS = ['DM', '스마트스토어', '후르츠패밀리'];
 // 낱개(piece)는 사진·이름을 찾을 때 쓰인다 (만든 개수는 catalog_events로 셈)

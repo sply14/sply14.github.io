@@ -1,8 +1,8 @@
 // 기록(LogData)에서 달력과 레벨 화면에 필요한 숫자를 계산합니다. DOM을 모르는 순수 함수만 있습니다.
 // LogData = { days: [{date}], work: [{date, title, minutes, span_key, item_id}], sales: [{date, item_id, title, channel, amount, qty, gift}],
 //             events: [{item_id, event, at, parent_id}], items: [{id, name, thumb_url, image_url, kind, parent_id, no}] }
-import { kstDateOf, addDays } from './log-dates.js?v=1795604839';
-import { DEFAULT_METRICS, brandLevel, worksPoints, floor1, tierOf, TIERS } from './log-level.js?v=1795604839';
+import { kstDateOf, addDays } from './log-dates.js?v=1795605176';
+import { DEFAULT_METRICS, brandLevel, worksPoints, floor1, tierOf, TIERS } from './log-level.js?v=1795605176';
 
 const saleValue = (s) => (s.gift ? 0 : (s.amount ?? 0) * (s.qty ?? 1));
 

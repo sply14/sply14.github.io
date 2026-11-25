@@ -1,9 +1,9 @@
 // 레벨 머리글, 최고 기록 카드, 날짜 상세, 설정, 저장 뒤 축하.
-import { h } from './common.js?v=1795604839';
-import { addDays } from './log-dates.js?v=1795604839';
-import { DEFAULT_METRICS, TIERS, floor1, tierOf, nextTier } from './log-level.js?v=1795604839';
-import { makingText } from './log-calendar.js?v=1795604839';
-import { levelByDate, records, stickers, itemName, makingsOn } from './log-stats.js?v=1795604839';
+import { h } from './common.js?v=1795605176';
+import { addDays } from './log-dates.js?v=1795605176';
+import { DEFAULT_METRICS, TIERS, floor1, tierOf, nextTier } from './log-level.js?v=1795605176';
+import { makingText } from './log-calendar.js?v=1795605176';
+import { levelByDate, records, stickers, itemName, makingsOn } from './log-stats.js?v=1795605176';
 
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 const won = (n) => '₩' + Math.round(n).toLocaleString('ko-KR');
@@ -217,7 +217,7 @@ export async function celebrate(levelRoot, burst, { from, to, tiers }) {
       h('div', { class: 'burst-star' }),
       h('div', { class: 'burst-text' }, h('b', { text: `Lv ${t1.min}` }), h('span', { text: t1.name })),
     );
-    burst.querySelector('.burst-star').innerHTML = (await import('./log-calendar.js?v=1795604839')).starSvg(16);
+    burst.querySelector('.burst-star').innerHTML = (await import('./log-calendar.js?v=1795605176')).starSvg(16);
     burst.hidden = false;
     burst.onclick = () => (burst.hidden = true);
     await new Promise((r) => setTimeout(r, reduced() ? 1500 : 2200));
